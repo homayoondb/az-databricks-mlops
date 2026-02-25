@@ -47,6 +47,7 @@ def test_new_creates_project(runner, tmp_path):
     assert (project_dir / "mlops" / "run_deploy.py").exists()
     assert (project_dir / ".github" / "workflows" / "ci.yml").exists()
     assert (project_dir / ".github" / "workflows" / "cd.yml").exists()
+    assert (project_dir / "GETTING_STARTED.md").exists()
 
     # DQX not included by default
     assert not (project_dir / "resources" / "dqx-job.yml").exists()
@@ -72,6 +73,27 @@ def test_new_with_dqx(runner, tmp_path):
     project_dir = tmp_path / "dqx_project"
     assert (project_dir / "resources" / "dqx-job.yml").exists()
     assert (project_dir / "mlops" / "dqx_checks.py").exists()
+
+
+def test_new_skip_inference(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "new",
+            "no_inf_project",
+            "--staging-url",
+            "https://staging.cloud.databricks.com",
+            "--prod-url",
+            "https://prod.cloud.databricks.com",
+            "--skip-inference",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    project_dir = tmp_path / "no_inf_project"
+    assert (project_dir / "resources" / "training-job.yml").exists()
+    assert not (project_dir / "resources" / "inference-job.yml").exists()
 
 
 def test_new_fails_if_dir_exists(runner, tmp_path):
@@ -104,90 +126,60 @@ def test_init_creates_files_in_cwd(runner, tmp_path):
             "https://staging.cloud.databricks.com",
             "--prod-url",
             "https://prod.cloud.databricks.com",
+            "--training-notebook",
+            "train.py",
+            "--skip-inference",
         ],
     )
     assert result.exit_code == 0, result.output
     assert (tmp_path / "databricks.yml").exists()
     assert (tmp_path / "mlops" / "config.py").exists()
+    assert (tmp_path / "GETTING_STARTED.md").exists()
 
 
 def test_init_refuses_overwrite_by_default(runner, tmp_path):
     os.chdir(tmp_path)
-    # First init
-    runner.invoke(
-        cli,
-        [
-            "init",
-            "--project-name",
-            "p",
-            "--staging-url",
-            "https://s.com",
-            "--prod-url",
-            "https://p.com",
-        ],
-    )
-    # Second init should fail
-    result = runner.invoke(
-        cli,
-        [
-            "init",
-            "--project-name",
-            "p",
-            "--staging-url",
-            "https://s.com",
-            "--prod-url",
-            "https://p.com",
-        ],
-    )
+    args = [
+        "init",
+        "--project-name", "p",
+        "--staging-url", "https://s.com",
+        "--prod-url", "https://p.com",
+        "--training-notebook", "train.py",
+        "--skip-inference",
+    ]
+    runner.invoke(cli, args)
+    result = runner.invoke(cli, args)
     assert result.exit_code != 0
 
 
 def test_init_overwrite_flag(runner, tmp_path):
     os.chdir(tmp_path)
-    runner.invoke(
-        cli,
-        [
-            "init",
-            "--project-name",
-            "p",
-            "--staging-url",
-            "https://s.com",
-            "--prod-url",
-            "https://p.com",
-        ],
-    )
-    result = runner.invoke(
-        cli,
-        [
-            "init",
-            "--project-name",
-            "p",
-            "--staging-url",
-            "https://s.com",
-            "--prod-url",
-            "https://p.com",
-            "--overwrite",
-        ],
-    )
+    args = [
+        "init",
+        "--project-name", "p",
+        "--staging-url", "https://s.com",
+        "--prod-url", "https://p.com",
+        "--training-notebook", "train.py",
+        "--skip-inference",
+    ]
+    runner.invoke(cli, args)
+    result = runner.invoke(cli, args + ["--overwrite"])
     assert result.exit_code == 0, result.output
 
 
 def test_add_dqx_to_existing_project(runner, tmp_path):
     os.chdir(tmp_path)
-    # First create a project
     runner.invoke(
         cli,
         [
             "init",
-            "--project-name",
-            "dqx_test",
-            "--staging-url",
-            "https://staging.example.com",
-            "--prod-url",
-            "https://prod.example.com",
+            "--project-name", "dqx_test",
+            "--staging-url", "https://staging.example.com",
+            "--prod-url", "https://prod.example.com",
+            "--training-notebook", "train.py",
+            "--skip-inference",
         ],
     )
-    # Then add DQX
     result = runner.invoke(cli, ["add", "dqx"])
     assert result.exit_code == 0, result.output
     assert (tmp_path / "resources" / "dqx-job.yml").exists()

@@ -1,6 +1,6 @@
 # az-mlops
 
-Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~10 files — no complex templates, no 20-question wizards.
+Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~12 files — no complex templates, no 20-question wizards.
 
 Built for AWS Databricks with Unity Catalog and GitHub Actions.
 
@@ -12,8 +12,8 @@ The official [mlops-stacks](https://github.com/databricks/mlops-stacks) template
 
 | | mlops-stacks | az-mlops |
 |---|---|---|
-| Files generated | 40+ | ~10 |
-| Setup prompts | 20 | 3 |
+| Files generated | 40+ | ~12 |
+| Setup prompts | 20 | 3-5 |
 | Template engine | Go templates | Python + Jinja2 |
 | Cloud support | AWS, Azure, GCP | AWS (hardcoded) |
 | CI/CD platforms | GitHub Actions, Azure DevOps, GitLab | GitHub Actions |
@@ -24,8 +24,8 @@ The official [mlops-stacks](https://github.com/databricks/mlops-stacks) template
 ```bash
 pip install -e .
 
-# Add MLOps to an existing project
-cd my_ml_project
+# Add MLOps to an existing project (the most common case)
+cd my_messy_ml_project
 az-mlops init
 
 # Or create a new project from scratch
@@ -34,15 +34,47 @@ az-mlops new my_project \
   --prod-url https://prod.cloud.databricks.com
 ```
 
+### What `az-mlops init` looks like
+
+```
+$ cd my_messy_ml_project
+$ az-mlops init
+
+Project name [my_messy_ml_project]:
+Staging workspace URL: https://staging.cloud.databricks.com
+Prod workspace URL: https://prod.cloud.databricks.com
+
+  Found notebooks/scripts in your project:
+    1. notebooks/train_model_v3.py
+    2. notebooks/exploration.ipynb
+    3. src/preprocess.py
+
+  Training notebook/script (number or path) [training/notebooks/Train.py]: 1
+  Include batch inference job? [Y/n]: n
+
+  Created .gitignore
+  Created databricks.yml
+  Created resources/training-job.yml
+  Created mlops/config.py
+  Created mlops/validation.py
+  ...
+  Created GETTING_STARTED.md
+
+Done! Next steps are in GETTING_STARTED.md
+```
+
+The CLI scans your project for `.py` and `.ipynb` files so you can pick your training script by number instead of typing the path. After that, open `GETTING_STARTED.md` — it's a 4-step checklist personalized to your project.
+
 ## What gets generated
 
 ```
 my_project/
 ├── .gitignore
 ├── databricks.yml              # Bundle config: dev/staging/prod targets
+├── GETTING_STARTED.md          # 4-step onboarding checklist
 ├── resources/
 │   ├── training-job.yml        # Train → Validate → Deploy workflow
-│   └── inference-job.yml       # Scheduled batch inference
+│   └── inference-job.yml       # Scheduled batch inference (optional)
 ├── mlops/
 │   ├── __init__.py
 │   ├── config.py               # Project config (model name, catalog, schema)
@@ -61,18 +93,27 @@ Existing code is never modified — only new files are added alongside it.
 
 ### `az-mlops init`
 
-Add MLOps scaffolding to the current directory. Prompts for project name, staging URL, and prod URL.
+Add MLOps scaffolding to the current directory.
 
 ```bash
-# Interactive
+# Interactive (discovers your notebooks, prompts for choices)
 az-mlops init
 
-# Non-interactive
+# Non-interactive (CI-friendly)
 az-mlops init \
   --project-name my_project \
   --staging-url https://staging.cloud.databricks.com \
-  --prod-url https://prod.cloud.databricks.com
+  --prod-url https://prod.cloud.databricks.com \
+  --training-notebook notebooks/train.py \
+  --skip-inference
 ```
+
+Options:
+- `--training-notebook` — path to your training script (prompted interactively if omitted)
+- `--inference-notebook` — path to your inference script
+- `--skip-inference` — skip batch inference job entirely
+- `--with-dqx` — include DQX data quality checks
+- `--overwrite` — replace existing generated files
 
 ### `az-mlops new <name>`
 
@@ -143,7 +184,8 @@ pytest tests/ -v
 
 ## Customization
 
-- **Cluster config** — edit `resources/training-job.yml` and `resources/inference-job.yml` (node type, workers, Spark version)
+- **Training notebook** — change `notebook_path` in `resources/training-job.yml`
+- **Cluster config** — edit node type, workers, Spark version in resource YAMLs
 - **Validation thresholds** — edit `mlops/validation.py` (metric names, threshold values)
 - **Schedule** — edit the `schedule` block in any resource YAML (cron expression)
 - **Model promotion logic** — edit `mlops/deploy.py`

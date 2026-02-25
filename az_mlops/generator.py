@@ -2,21 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 
-TEMPLATES_DIR = Path(__file__).parent / "templates"
-
-# Maps template path (relative to templates/) to output path (relative to project root).
-# Use None as output path to mean "same as template path minus .j2 suffix".
 CORE_TEMPLATES: list[str] = [
     ".gitignore.j2",
     "databricks.yml.j2",
     "resources/training-job.yml.j2",
-    "resources/inference-job.yml.j2",
     "mlops/__init__.py.j2",
     "mlops/config.py.j2",
     "mlops/validation.py.j2",
@@ -25,6 +20,11 @@ CORE_TEMPLATES: list[str] = [
     "mlops/run_deploy.py.j2",
     ".github/workflows/ci.yml.j2",
     ".github/workflows/cd.yml.j2",
+    "GETTING_STARTED.md.j2",
+]
+
+INFERENCE_TEMPLATES: list[str] = [
+    "resources/inference-job.yml.j2",
 ]
 
 DQX_TEMPLATES: list[str] = [
@@ -40,6 +40,9 @@ class ProjectConfig:
     project_name: str
     staging_workspace_url: str
     prod_workspace_url: str
+    training_notebook: str = "training/notebooks/Train.py"
+    with_inference: bool = True
+    inference_notebook: str = "deployment/batch_inference/notebooks/BatchInference.py"
     with_dqx: bool = False
 
 
@@ -59,6 +62,8 @@ def render_templates(config: ProjectConfig) -> dict[str, str]:
     )
 
     templates = list(CORE_TEMPLATES)
+    if config.with_inference:
+        templates.extend(INFERENCE_TEMPLATES)
     if config.with_dqx:
         templates.extend(DQX_TEMPLATES)
 
@@ -69,6 +74,9 @@ def render_templates(config: ProjectConfig) -> dict[str, str]:
             project_name=config.project_name,
             staging_workspace_url=config.staging_workspace_url,
             prod_workspace_url=config.prod_workspace_url,
+            training_notebook=config.training_notebook,
+            with_inference=config.with_inference,
+            inference_notebook=config.inference_notebook,
             with_dqx=config.with_dqx,
         )
         results[_output_path(tmpl_name)] = rendered
@@ -94,3 +102,20 @@ def write_files(
         dest.write_text(content)
         created.append(dest)
     return created
+
+
+def find_notebooks(directory: Path) -> list[str]:
+    """Find Python and Jupyter notebook files that look like training scripts."""
+    patterns = ["**/*.py", "**/*.ipynb"]
+    skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "mlops"}
+    results: list[str] = []
+
+    for pattern in patterns:
+        for path in directory.glob(pattern):
+            # Skip hidden dirs, venvs, and our own generated files
+            parts = path.relative_to(directory).parts
+            if any(p in skip_dirs or p.startswith(".") for p in parts[:-1]):
+                continue
+            results.append(str(path.relative_to(directory)))
+
+    return sorted(results)

@@ -6,13 +6,42 @@ from pathlib import Path
 
 import click
 
-from az_mlops.generator import ProjectConfig, render_templates, write_files
+from az_mlops.generator import (
+    ProjectConfig,
+    find_notebooks,
+    render_templates,
+    write_files,
+)
 
 
 @click.group()
 @click.version_option()
 def cli() -> None:
     """Lightweight MLOps scaffolding for Databricks projects."""
+
+
+def _prompt_notebook(label: str, directory: Path, default: str) -> str:
+    """Prompt the user to select or type a notebook path, showing discovered files."""
+    notebooks = find_notebooks(directory)
+    if notebooks:
+        click.echo(f"\n  Found notebooks/scripts in your project:")
+        for i, nb in enumerate(notebooks, 1):
+            click.echo(f"    {i}. {nb}")
+        click.echo()
+        choice = click.prompt(
+            f"  {label} (number or path)",
+            default=default,
+        )
+        # If they typed a number, resolve it
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(notebooks):
+                return notebooks[idx - 1]
+        except ValueError:
+            pass
+        return choice
+    else:
+        return click.prompt(f"  {label}", default=default)
 
 
 @cli.command()
@@ -33,29 +62,74 @@ def cli() -> None:
     prompt="Prod workspace URL",
     help="Databricks production workspace URL.",
 )
+@click.option(
+    "--training-notebook",
+    default=None,
+    help="Path to your training notebook/script (relative to project root).",
+)
+@click.option(
+    "--inference-notebook",
+    default=None,
+    help="Path to your inference notebook/script. Omit to skip batch inference.",
+)
+@click.option(
+    "--skip-inference",
+    is_flag=True,
+    help="Skip batch inference job generation.",
+)
 @click.option("--with-dqx", is_flag=True, help="Include DQX data quality checks.")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
 def init(
     project_name: str,
     staging_url: str,
     prod_url: str,
+    training_notebook: str | None,
+    inference_notebook: str | None,
+    skip_inference: bool,
     with_dqx: bool,
     overwrite: bool,
 ) -> None:
     """Add MLOps scaffolding to an existing project."""
+    cwd = Path.cwd()
+
+    # Prompt for training notebook if not provided
+    if training_notebook is None:
+        training_notebook = _prompt_notebook(
+            "Training notebook/script",
+            cwd,
+            default="training/notebooks/Train.py",
+        )
+
+    # Prompt for inference notebook if not skipped and not provided
+    with_inference = not skip_inference
+    if with_inference and inference_notebook is None:
+        include = click.confirm("  Include batch inference job?", default=True)
+        if include:
+            inference_notebook = _prompt_notebook(
+                "Inference notebook/script",
+                cwd,
+                default="deployment/batch_inference/notebooks/BatchInference.py",
+            )
+        else:
+            with_inference = False
+
     config = ProjectConfig(
         project_name=project_name,
         staging_workspace_url=staging_url.rstrip("/"),
         prod_workspace_url=prod_url.rstrip("/"),
+        training_notebook=training_notebook,
+        with_inference=with_inference,
+        inference_notebook=inference_notebook or "",
         with_dqx=with_dqx,
     )
     rendered = render_templates(config)
-    created = write_files(Path.cwd(), rendered, overwrite=overwrite)
+    created = write_files(cwd, rendered, overwrite=overwrite)
 
-    for path in created:
-        click.echo(f"  Created {path.relative_to(Path.cwd())}")
     click.echo()
-    click.echo("Done! Run `databricks bundle validate` to verify.")
+    for path in created:
+        click.echo(f"  Created {path.relative_to(cwd)}")
+    click.echo()
+    click.echo("Done! Next steps are in GETTING_STARTED.md")
 
 
 @cli.command()
@@ -70,11 +144,17 @@ def init(
     prompt="Prod workspace URL",
     help="Databricks production workspace URL.",
 )
+@click.option(
+    "--skip-inference",
+    is_flag=True,
+    help="Skip batch inference job generation.",
+)
 @click.option("--with-dqx", is_flag=True, help="Include DQX data quality checks.")
 def new(
     project_name: str,
     staging_url: str,
     prod_url: str,
+    skip_inference: bool,
     with_dqx: bool,
 ) -> None:
     """Create a new ML project with MLOps scaffolding."""
@@ -88,6 +168,7 @@ def new(
         project_name=project_name,
         staging_workspace_url=staging_url.rstrip("/"),
         prod_workspace_url=prod_url.rstrip("/"),
+        with_inference=not skip_inference,
         with_dqx=with_dqx,
     )
     rendered = render_templates(config)
@@ -96,7 +177,7 @@ def new(
     for path in created:
         click.echo(f"  Created {path.relative_to(Path.cwd())}")
     click.echo()
-    click.echo(f"Done! cd {project_name} && databricks bundle validate")
+    click.echo(f"Done! See {project_name}/GETTING_STARTED.md for next steps.")
 
 
 @cli.group()
@@ -108,14 +189,12 @@ def add() -> None:
 @click.option("--overwrite", is_flag=True, help="Overwrite existing DQX files.")
 def add_dqx(overwrite: bool) -> None:
     """Add DQX data quality checks to an existing project."""
-    # Read existing config to get project settings
     config_path = Path.cwd() / "mlops" / "config.py"
     if not config_path.exists():
         raise click.ClickException(
             "No mlops/config.py found. Run `az-mlops init` first."
         )
 
-    # Parse project name from existing config
     config_text = config_path.read_text()
     project_name = _extract_config_value(config_text, "MODEL_NAME")
 
@@ -137,13 +216,9 @@ def add_dqx(overwrite: bool) -> None:
     )
     rendered = render_templates(config)
 
-    # Only write DQX-specific files
-    dqx_files = {
-        k: v for k, v in rendered.items() if "dqx" in k.lower()
-    }
+    dqx_files = {k: v for k, v in rendered.items() if "dqx" in k.lower()}
     created = write_files(Path.cwd(), dqx_files, overwrite=overwrite)
 
-    # Remind user to add the DQX resource include to databricks.yml
     for path in created:
         click.echo(f"  Created {path.relative_to(Path.cwd())}")
     click.echo()
@@ -171,7 +246,6 @@ def _extract_yaml_host(text: str, target: str) -> str:
             continue
         if in_target and stripped.startswith("host:"):
             return stripped.split(":", 1)[1].strip()
-        # Stop if we hit another top-level target
         if in_target and not stripped.startswith("#") and ":" in stripped and not stripped.startswith("host") and not stripped.startswith("catalog") and not stripped.startswith("variable"):
             if line[0] != " " or (len(line) - len(line.lstrip())) <= 4:
                 in_target = False

@@ -15,7 +15,9 @@ variables:
 
 include:
   - ./resources/training-job.yml
+{%- if with_inference %}
   - ./resources/inference-job.yml
+{%- endif %}
 {%- if with_dqx %}
   - ./resources/dqx-job.yml
 {%- endif %}

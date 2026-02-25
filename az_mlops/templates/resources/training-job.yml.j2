@@ -30,7 +30,7 @@ resources:
             - task_key: DataQuality
 {%- endif %}
           notebook_task:
-            notebook_path: ../training/notebooks/Train.py
+            notebook_path: ../{{ training_notebook }}
             base_parameters:
               env: ${bundle.target}
               experiment_name: ${var.experiment_name}

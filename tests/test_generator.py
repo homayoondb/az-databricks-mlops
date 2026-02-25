@@ -3,7 +3,7 @@
 import yaml
 import pytest
 
-from az_mlops.generator import ProjectConfig, render_templates
+from az_mlops.generator import ProjectConfig, find_notebooks, render_templates
 
 
 @pytest.fixture
@@ -12,6 +12,7 @@ def config():
         project_name="test_project",
         staging_workspace_url="https://staging.cloud.databricks.com",
         prod_workspace_url="https://prod.cloud.databricks.com",
+        training_notebook="notebooks/train.py",
     )
 
 
@@ -21,7 +22,19 @@ def config_with_dqx():
         project_name="test_project",
         staging_workspace_url="https://staging.cloud.databricks.com",
         prod_workspace_url="https://prod.cloud.databricks.com",
+        training_notebook="notebooks/train.py",
         with_dqx=True,
+    )
+
+
+@pytest.fixture
+def config_no_inference():
+    return ProjectConfig(
+        project_name="test_project",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        prod_workspace_url="https://prod.cloud.databricks.com",
+        training_notebook="notebooks/train.py",
+        with_inference=False,
     )
 
 
@@ -41,6 +54,7 @@ def test_core_templates_rendered(config):
         "mlops/run_deploy.py",
         ".github/workflows/ci.yml",
         ".github/workflows/cd.yml",
+        "GETTING_STARTED.md",
     ]
     for f in expected_files:
         assert f in rendered, f"Missing: {f}"
@@ -86,11 +100,11 @@ def test_databricks_yml_excludes_dqx_by_default(config):
     assert "dqx" not in content
 
 
-def test_training_job_has_project_name(config):
+def test_training_job_uses_custom_notebook(config):
     rendered = render_templates(config)
     content = rendered["resources/training-job.yml"]
 
-    assert "test_project" in content
+    assert "notebooks/train.py" in content
     assert "model-training-job" in content
 
 
@@ -109,12 +123,17 @@ def test_training_job_no_dqx_task_by_default(config):
     assert "DataQuality" not in content
 
 
-def test_inference_job_has_project_name(config):
-    rendered = render_templates(config)
-    content = rendered["resources/inference-job.yml"]
+def test_inference_job_excluded_when_skipped(config_no_inference):
+    rendered = render_templates(config_no_inference)
 
-    assert "test_project" in content
-    assert "batch-inference-job" in content
+    assert "resources/inference-job.yml" not in rendered
+    assert "inference" not in rendered["databricks.yml"]
+
+
+def test_inference_job_included_by_default(config):
+    rendered = render_templates(config)
+
+    assert "resources/inference-job.yml" in rendered
 
 
 def test_config_py_has_model_name(config):
@@ -164,3 +183,30 @@ def test_gitignore_generated(config):
 
     assert ".gitignore" in rendered
     assert "__pycache__" in rendered[".gitignore"]
+
+
+def test_getting_started_references_training_notebook(config):
+    rendered = render_templates(config)
+    content = rendered["GETTING_STARTED.md"]
+
+    assert "notebooks/train.py" in content
+    assert "Step 1" in content
+    assert "STAGING_WORKSPACE_TOKEN" in content
+
+
+def test_find_notebooks(tmp_path):
+    (tmp_path / "train.py").write_text("# training")
+    (tmp_path / "notebooks").mkdir()
+    (tmp_path / "notebooks" / "explore.ipynb").write_text("{}")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "hooks.py").write_text("")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "cached.pyc").write_text("")
+
+    results = find_notebooks(tmp_path)
+
+    assert "train.py" in results
+    assert "notebooks/explore.ipynb" in results
+    # Should not include hidden dirs or pycache
+    assert not any(".git" in r for r in results)
+    assert not any("__pycache__" in r for r in results)
