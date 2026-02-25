@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import click
@@ -169,7 +170,7 @@ def init(
     for path in created:
         click.echo(f"  Created {path.relative_to(cwd)}")
     click.echo()
-    click.echo("Done! Run `databricks bundle validate` to verify.")
+    _run_bundle_validate(cwd)
 
 
 @cli.command()
@@ -297,6 +298,22 @@ def add_dqx(overwrite: bool) -> None:
     click.echo()
     click.echo("Add this line to the `include` section of databricks.yml:")
     click.echo("  - ./resources/dqx-job.yml")
+
+
+def _run_bundle_validate(directory: Path) -> None:
+    """Run `databricks bundle validate` and print the result."""
+    click.echo("Running `databricks bundle validate`...")
+    result = subprocess.run(
+        ["databricks", "bundle", "validate"],
+        cwd=directory,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        click.echo("  Bundle is valid.")
+    else:
+        click.echo("  Validation failed — fix the errors above before deploying.")
+        click.echo(result.stdout or result.stderr)
 
 
 def _extract_config_value(text: str, variable: str) -> str:
