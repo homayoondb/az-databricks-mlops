@@ -19,11 +19,22 @@ The official [mlops-stacks](https://github.com/databricks/mlops-stacks) template
 | CI/CD platforms | GitHub Actions, Azure DevOps, GitLab | GitHub Actions |
 | Model registry | Workspace or Unity Catalog | Unity Catalog only |
 
+## Installation
+
+```bash
+# Install directly from GitHub (recommended)
+pip install git+https://github.com/<org>/az-mlops.git
+
+# Or clone and install locally
+git clone https://github.com/<org>/az-mlops.git
+pip install ./az-mlops
+```
+
+After installation, the `az-mlops` command is available globally.
+
 ## Quick start
 
 ```bash
-pip install -e .
-
 # Add MLOps to an existing project (the most common case)
 cd my_messy_ml_project
 az-mlops init
