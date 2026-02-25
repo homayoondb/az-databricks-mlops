@@ -13,6 +13,14 @@ variables:
   catalog_name:
     description: Unity Catalog catalog name (maps to environment).
 
+sync:
+  include:
+    - "mlops/**"
+    - "{{ training_notebook }}"
+{%- if with_inference %}
+    - "{{ inference_notebook }}"
+{%- endif %}
+
 include:
   - ./resources/training-job.yml
 {%- if with_inference %}
