@@ -6,18 +6,9 @@ Built for AWS Databricks with Unity Catalog and GitHub Actions.
 
 ## Why?
 
-The official [mlops-stacks](https://github.com/databricks/mlops-stacks) template generates 40+ files with Go templates and requires answering 20 prompts. Most ML teams just want something that works.
+Most ML teams have working models but no production pipeline. Setting up MLOps from scratch means figuring out Databricks Asset Bundles, model validation, CI/CD workflows, and deployment promotion — all from blank files.
 
-`az-mlops` gives you the same production patterns (Databricks Asset Bundles, model validation, CI/CD) in a fraction of the complexity.
-
-| | mlops-stacks | az-mlops |
-|---|---|---|
-| Files generated | 40+ | ~12 |
-| Setup prompts | 20 | 3-5 |
-| Template engine | Go templates | Python + Jinja2 |
-| Cloud support | AWS, Azure, GCP | AWS (hardcoded) |
-| CI/CD platforms | GitHub Actions, Azure DevOps, GitLab | GitHub Actions |
-| Model registry | Workspace or Unity Catalog | Unity Catalog only |
+`az-mlops` does it in one command. You point it at your training script, answer 3 prompts, and get a production-ready pipeline.
 
 ## Installation
 
@@ -36,7 +27,7 @@ After installation, the `az-mlops` command is available globally.
 
 ```bash
 # Add MLOps to an existing project (the most common case)
-cd my_messy_ml_project
+cd my_ml_project
 az-mlops init
 
 # Or create a new project from scratch
@@ -48,15 +39,15 @@ az-mlops new my_project \
 ### What `az-mlops init` looks like
 
 ```
-$ cd my_messy_ml_project
+$ cd my_ml_project
 $ az-mlops init
 
-Project name [my_messy_ml_project]:
+Project name [my_ml_project]:
 Staging workspace URL: https://staging.cloud.databricks.com
 Prod workspace URL: https://prod.cloud.databricks.com
 
   Found notebooks/scripts in your project:
-    1. notebooks/train_model_v3.py
+    1. notebooks/train_model.py
     2. notebooks/exploration.ipynb
     3. src/preprocess.py
 
@@ -99,6 +90,23 @@ my_project/
 ```
 
 Existing code is never modified — only new files are added alongside it.
+
+## Try it on a real (messy) project
+
+The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files. Run the demo to see `az-mlops` add MLOps to it without touching a single existing file:
+
+```bash
+bash examples/demo.sh
+```
+
+Or do it manually:
+
+```bash
+cd examples/messy-ml-project
+python notebooks/train_model_v3_FINAL.py   # verify it works
+az-mlops init                               # add MLOps
+cat GETTING_STARTED.md                      # see what to do next
+```
 
 ## Commands
 
@@ -145,23 +153,6 @@ az-mlops add dqx
 ```
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.
-
-## Try it on a real (messy) project
-
-The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files. Run the demo to see `az-mlops` add MLOps to it without touching a single existing file:
-
-```bash
-bash examples/demo.sh
-```
-
-Or do it manually:
-
-```bash
-cd examples/messy-ml-project
-python notebooks/train_model_v3_FINAL.py   # verify it works
-az-mlops init                               # add MLOps
-cat GETTING_STARTED.md                      # see what to do next
-```
 
 ## DQX integration (optional)
 
