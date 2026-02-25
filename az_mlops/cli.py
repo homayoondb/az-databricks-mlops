@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -254,6 +255,92 @@ def clean() -> None:
         click.echo("Nothing to clean — no generated files found.")
 
 
+@cli.command()
+@click.option(
+    "--target",
+    default="dev",
+    show_default=True,
+    help="Bundle target to deploy and run against (dev/staging/prod).",
+)
+def run(target: str) -> None:
+    """Deploy the bundle and run the training job. Prints the MLflow experiment URL."""
+    cwd = Path.cwd()
+
+    databricks_yml = cwd / "databricks.yml"
+    if not databricks_yml.exists():
+        raise click.ClickException("No databricks.yml found. Run `az-mlops init` first.")
+
+    bundle = yaml.safe_load(databricks_yml.read_text())
+    project_name = bundle.get("bundle", {}).get("name", cwd.name)
+
+    # Workspace URL: try the requested target, fall back to dev/staging
+    workspace_url = (
+        _extract_yaml_host(databricks_yml.read_text(), target)
+        or _extract_yaml_host(databricks_yml.read_text(), "dev")
+        or _extract_yaml_host(databricks_yml.read_text(), "staging")
+    )
+
+    # 1. Deploy
+    click.echo(f"Deploying bundle to target '{target}'...")
+    deploy = subprocess.run(
+        ["databricks", "bundle", "deploy", "-t", target],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if deploy.returncode != 0:
+        raise click.ClickException(f"Deploy failed:\n{deploy.stderr or deploy.stdout}")
+    click.echo("  Deployed.")
+
+    # 2. Start training job (no-wait so we get the URL immediately)
+    click.echo("Starting training job...")
+    run_proc = subprocess.run(
+        ["databricks", "bundle", "run", "model_training_job", "-t", target, "--no-wait", "--output", "json"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if run_proc.returncode != 0:
+        raise click.ClickException(f"Run failed:\n{run_proc.stderr or run_proc.stdout}")
+
+    run_page_url = ""
+    try:
+        run_data = json.loads(run_proc.stdout)
+        run_page_url = run_data.get("run_page_url", "")
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+    # 3. Get current user to construct the experiment URL
+    experiment_url = ""
+    try:
+        me = subprocess.run(
+            ["databricks", "current-user", "me", "--output", "json"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+        )
+        user_name = json.loads(me.stdout).get("userName", "")
+        if user_name and workspace_url:
+            experiment_name = f"{target}-{project_name}-experiment"
+            experiment_url = f"{workspace_url}/#mlflow/experiments?searchFilter=name+like+%27%25{experiment_name}%25%27"
+    except Exception:
+        pass
+
+    click.echo()
+    click.echo("Training job started.")
+    click.echo()
+    if run_page_url:
+        click.echo(f"  Job run:    {run_page_url}")
+    if experiment_url:
+        click.echo(f"  Experiment: {experiment_url}")
+    elif workspace_url:
+        click.echo(f"  Experiment: {workspace_url}/#mlflow/experiments")
+        click.echo(f"              (search for '{target}-{project_name}-experiment')")
+    click.echo()
+    click.echo("The job runs Train → Validate → Deploy in sequence.")
+    click.echo("Once complete, the model will be registered in Unity Catalog with the 'champion' alias.")
+
+
 @cli.group()
 def add() -> None:
     """Add optional components to an existing az-mlops project."""
@@ -311,6 +398,8 @@ def _run_bundle_validate(directory: Path) -> None:
     )
     if result.returncode == 0:
         click.echo("  Bundle is valid.")
+        click.echo()
+        click.echo("Next: run `az-mlops run` to deploy and start your first training job.")
     else:
         click.echo("  Validation failed — fix the errors above before deploying.")
         click.echo(result.stdout or result.stderr)

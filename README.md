@@ -21,28 +21,25 @@ git clone https://github.com/<org>/az-mlops.git
 pip install ./az-mlops
 ```
 
-After installation, the `az-mlops` command is available globally.
+## The complete flow
 
-## Quick start
+Three commands take you from messy ML project to tracked experiment in Databricks:
 
-```bash
-# Add MLOps to an existing project (the most common case)
-cd my_ml_project
-az-mlops init
-
-# Or create a new project from scratch
-az-mlops new my_project \
-  --staging-url https://staging.cloud.databricks.com
+```
+az-mlops init    →    az-mlops run    →    open the experiment URL
+  (5 prompts)       (deploy + train)      (MLflow tracking in Databricks)
 ```
 
-### What `az-mlops init` looks like
+### Step 1 — `az-mlops init`
+
+Add MLOps scaffolding to your existing project:
 
 ```
 $ cd my_ml_project
 $ az-mlops init
 
 Project name [my_ml_project]:
-Staging workspace URL: https://staging.cloud.databricks.com
+Staging workspace URL: https://xxx.cloud.databricks.com
 Prod workspace URL (enter to skip):
 
   Found notebooks/scripts in your project:
@@ -50,10 +47,9 @@ Prod workspace URL (enter to skip):
     2. notebooks/exploration.ipynb
     3. src/preprocess.py
 
-  Training notebook/script (number or path) [training/notebooks/Train.py]: 1
-  Include batch inference job? [Y/n]: y
+  Training notebook/script (number or path) [train.py]: 1
+  Include batch inference job? [Y/n]: n
 
-  Created .gitignore
   Created databricks.yml
   Created resources/training-job.yml
   Created mlops/run_training.py
@@ -61,10 +57,46 @@ Prod workspace URL (enter to skip):
   Created mlops/validation.py
   ...
 
-Done! Run `databricks bundle validate` to verify.
+Running `databricks bundle validate`...
+  Bundle is valid.
+
+Next: run `az-mlops run` to deploy and start your first training job.
 ```
 
-The CLI scans your project for `.py` and `.ipynb` files so you can pick your training script by number instead of typing the path.
+### Step 2 — `az-mlops run`
+
+Deploy the bundle to Databricks and start the training job:
+
+```
+$ az-mlops run
+
+Deploying bundle to target 'dev'...
+  Deployed.
+Starting training job...
+
+Training job started.
+
+  Job run:    https://xxx.cloud.databricks.com/jobs/123456/runs/789
+  Experiment: https://xxx.cloud.databricks.com/#mlflow/experiments?searchFilter=...
+```
+
+Open the **Job run** URL to watch the pipeline execute. Open the **Experiment** URL to see MLflow tracking — metrics, parameters, and the registered model — in real time.
+
+### What the training pipeline does
+
+The job runs three tasks in sequence:
+
+```
+Train  →  ModelValidation  →  ModelDeployment
+```
+
+1. **Train** — wraps your training script with `mlflow.autolog()`, logs metrics/params/model automatically, registers the model in Unity Catalog as `challenger`
+2. **ModelValidation** — evaluates the challenger against configurable thresholds (edit `mlops/validation.py` to set your metrics)
+3. **ModelDeployment** — if validation passes, promotes the model to `champion` in Unity Catalog
+
+If you added DQX, a **DataQuality** task runs first and blocks training if data checks fail.
+
+---
 
 ## What gets generated
 
@@ -93,7 +125,7 @@ my_project/
 
 The key insight: `mlops/run_training.py` wraps your existing training script automatically:
 
-1. Sets up MLflow experiment tracking
+1. Sets up the MLflow experiment
 2. Enables `mlflow.autolog()` — captures model, metrics, and parameters
 3. Executes your training script (unchanged)
 4. Registers the logged model in Unity Catalog
@@ -111,13 +143,13 @@ The `examples/messy-ml-project/` directory is a deliberately sloppy ML project �
 bash examples/demo.sh
 ```
 
-Or do it manually:
+Or manually:
 
 ```bash
 cd examples/messy-ml-project
-python notebooks/train_model_v3_FINAL.py   # verify it works
-az-mlops init                               # add MLOps
-databricks bundle validate                  # verify bundle
+python notebooks/train_model_v3_FINAL.py   # verify it works first
+az-mlops init                               # add MLOps (5 prompts)
+az-mlops run                                # deploy + run, get experiment URL
 ```
 
 ## Commands
@@ -134,25 +166,23 @@ az-mlops init
 az-mlops init \
   --project-name my_project \
   --staging-url https://staging.cloud.databricks.com \
-  --prod-url https://prod.cloud.databricks.com \
   --training-notebook notebooks/train.py \
   --skip-inference
 ```
 
 Options:
 - `--training-notebook` — path to your training script (prompted interactively if omitted)
-- `--inference-notebook` — path to your inference script
 - `--skip-inference` — skip batch inference job entirely
 - `--with-dqx` — include DQX data quality checks
 - `--overwrite` — replace existing generated files
 
-### `az-mlops new <name>`
+### `az-mlops run`
 
-Create a new project directory with MLOps scaffolding.
+Deploy the bundle and start the training job. Prints direct URLs to the job run and MLflow experiment.
 
 ```bash
-az-mlops new my_project \
-  --staging-url https://staging.cloud.databricks.com
+az-mlops run              # deploys to dev (default)
+az-mlops run --target staging
 ```
 
 ### `az-mlops clean`
@@ -162,6 +192,14 @@ Remove all az-mlops generated files from the current directory — useful for re
 ```bash
 az-mlops clean    # removes generated files, keeps your code
 az-mlops init     # start fresh
+```
+
+### `az-mlops new <name>`
+
+Create a new project directory with MLOps scaffolding.
+
+```bash
+az-mlops new my_project --staging-url https://staging.cloud.databricks.com
 ```
 
 ### `az-mlops add dqx`
@@ -174,26 +212,6 @@ az-mlops add dqx
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.
 
-## Training pipeline
-
-The generated training job runs these tasks in sequence:
-
-1. **Train** — wraps your training script with `mlflow.autolog()`, registers model in Unity Catalog
-2. **ModelValidation** — evaluates the model against configurable thresholds (edit `mlops/validation.py`)
-3. **ModelDeployment** — promotes the model via UC aliases (`challenger` → `champion`)
-
-If `--with-dqx` is enabled, a **DataQuality** task runs first and gates training.
-
-## Development
-
-```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ -v
-```
-
 ## Customization
 
 - **Validation thresholds** — edit `mlops/validation.py` (metric names, threshold values)
@@ -201,3 +219,10 @@ pytest tests/ -v
 - **Schedule** — edit the `schedule` block in any resource YAML (cron expression)
 - **Model promotion logic** — edit `mlops/deploy.py`
 - **DQX rules** — edit `mlops/dqx_checks.py` (add/remove column-level checks)
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
