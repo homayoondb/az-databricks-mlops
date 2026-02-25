@@ -4,7 +4,7 @@ bundle:
 variables:
   experiment_name:
     description: MLflow experiment path for model training.
-    default: /Shared/az-databricks-mlabs/${bundle.target}-{{ project_name }}-experiment
+    default: /Shared/az-databricks-mlops/${bundle.target}-{{ project_name }}-experiment
 
   schema_name:
     description: Unity Catalog schema (database) where the model is registered.
