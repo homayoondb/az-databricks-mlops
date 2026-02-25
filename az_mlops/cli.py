@@ -82,6 +82,30 @@ def _detect_prod_url(directory: Path) -> str:
         return ""
 
 
+def _detect_catalog_name(directory: Path) -> str:
+    """Try to detect catalog name from existing databricks.yml."""
+    databricks_yml = directory / "databricks.yml"
+    if not databricks_yml.exists():
+        return ""
+    try:
+        bundle = yaml.safe_load(databricks_yml.read_text())
+        return bundle["variables"]["catalog_name"]["default"]
+    except (yaml.YAMLError, KeyError, TypeError):
+        return ""
+
+
+def _detect_schema_name(directory: Path) -> str:
+    """Try to detect schema name from existing databricks.yml."""
+    databricks_yml = directory / "databricks.yml"
+    if not databricks_yml.exists():
+        return ""
+    try:
+        bundle = yaml.safe_load(databricks_yml.read_text())
+        return bundle["variables"]["schema_name"]["default"]
+    except (yaml.YAMLError, KeyError, TypeError):
+        return ""
+
+
 @cli.command()
 @click.option(
     "--project-name",
@@ -157,10 +181,12 @@ def init(
         )
 
     if catalog_name is None:
-        catalog_name = click.prompt("Unity Catalog name")
+        detected = _detect_catalog_name(cwd)
+        catalog_name = click.prompt("Unity Catalog name", default=detected or None)
 
     if schema_name is None:
-        schema_name = click.prompt("Unity Catalog schema (database)")
+        detected = _detect_schema_name(cwd)
+        schema_name = click.prompt("Unity Catalog schema (database)", default=detected or None)
 
     if training_notebook is None:
         training_notebook = _prompt_notebook(

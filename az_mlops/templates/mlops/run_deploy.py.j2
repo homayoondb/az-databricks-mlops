@@ -6,6 +6,14 @@ Parameters (passed via job config):
   - model_name: Full UC model name (catalog.schema.model)
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to sys.path so `mlops` package imports work
+context = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+project_root = Path("/Workspace" + context.notebookPath().get()).parent.parent
+sys.path.insert(0, str(project_root))
+
 from mlops.deploy import promote_model
 
 # COMMAND ----------

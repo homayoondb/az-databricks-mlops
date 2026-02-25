@@ -11,8 +11,18 @@ Parameters (passed via job config):
   - model_type: regressor | classifier
 """
 
+import sys
+from pathlib import Path
+
 import mlflow
 from mlflow import MlflowClient
+
+# COMMAND ----------
+
+# Add project root to sys.path so `mlops` package imports work
+context = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+project_root = Path("/Workspace" + context.notebookPath().get()).parent.parent
+sys.path.insert(0, str(project_root))
 
 from mlops.validation import custom_metrics, evaluator_config, validation_thresholds
 
