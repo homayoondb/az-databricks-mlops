@@ -4,11 +4,15 @@ bundle:
 variables:
   experiment_name:
     description: MLflow experiment path for model training.
-    default: /az-databricks-mlabs/${bundle.target}-{{ project_name }}-experiment
+    default: /Shared/az-databricks-mlabs/${bundle.target}-{{ project_name }}-experiment
+
+  schema_name:
+    description: Unity Catalog schema (database) where the model is registered.
+    default: {{ schema_name }}
 
   model_name:
     description: Registered model name in Unity Catalog.
-    default: {{ project_name }}
+    default: {{ project_name | replace('-', '_') }}
 
   catalog_name:
     description: Unity Catalog catalog name (maps to environment).
@@ -16,10 +20,9 @@ variables:
 sync:
   include:
     - "mlops/**"
-    - "{{ training_notebook }}"
-{%- if with_inference %}
-    - "{{ inference_notebook }}"
-{%- endif %}
+    - "**/*.py"
+    - "**/*.ipynb"
+    - "data/**"
 
 include:
   - ./resources/training-job.yml
@@ -35,19 +38,19 @@ targets:
     mode: development
     default: true
     variables:
-      catalog_name: dev
+      catalog_name: {{ catalog_name }}
     workspace:
       host: {{ staging_workspace_url }}
 
   staging:
     variables:
-      catalog_name: staging
+      catalog_name: {{ catalog_name }}
     workspace:
       host: {{ staging_workspace_url }}
 {% if prod_workspace_url %}
   prod:
     variables:
-      catalog_name: prod
+      catalog_name: {{ catalog_name }}
     workspace:
       host: {{ prod_workspace_url }}
 {%- endif %}

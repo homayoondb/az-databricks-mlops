@@ -38,6 +38,8 @@ class ProjectConfig:
 
     project_name: str
     staging_workspace_url: str
+    catalog_name: str = ""
+    schema_name: str = ""
     prod_workspace_url: str = ""
     training_notebook: str = "train.py"
     with_inference: bool = True
@@ -72,6 +74,8 @@ def render_templates(config: ProjectConfig) -> dict[str, str]:
         rendered = template.render(
             project_name=config.project_name,
             staging_workspace_url=config.staging_workspace_url,
+            catalog_name=config.catalog_name,
+            schema_name=config.schema_name,
             prod_workspace_url=config.prod_workspace_url,
             training_notebook=config.training_notebook,
             with_inference=config.with_inference,

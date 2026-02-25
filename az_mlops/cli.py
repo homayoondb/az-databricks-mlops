@@ -99,6 +99,16 @@ def _detect_prod_url(directory: Path) -> str:
     help="Databricks production workspace URL. Optional.",
 )
 @click.option(
+    "--catalog-name",
+    default=None,
+    help="Unity Catalog catalog name (e.g. us_comm_lakehouse_dev).",
+)
+@click.option(
+    "--schema-name",
+    default=None,
+    help="Unity Catalog schema (database) where models will be registered.",
+)
+@click.option(
     "--training-notebook",
     default=None,
     help="Path to your training notebook/script (relative to project root).",
@@ -119,6 +129,8 @@ def init(
     project_name: str | None,
     staging_url: str | None,
     prod_url: str | None,
+    catalog_name: str | None,
+    schema_name: str | None,
     training_notebook: str | None,
     inference_notebook: str | None,
     skip_inference: bool,
@@ -144,6 +156,12 @@ def init(
             show_default=bool(detected),
         )
 
+    if catalog_name is None:
+        catalog_name = click.prompt("Unity Catalog name")
+
+    if schema_name is None:
+        schema_name = click.prompt("Unity Catalog schema (database)")
+
     if training_notebook is None:
         training_notebook = _prompt_notebook(
             "Training notebook/script",
@@ -166,6 +184,8 @@ def init(
     config = ProjectConfig(
         project_name=project_name,
         staging_workspace_url=_sanitize_url(staging_url),
+        catalog_name=catalog_name,
+        schema_name=schema_name,
         prod_workspace_url=_sanitize_url(prod_url) if prod_url else "",
         training_notebook=training_notebook,
         with_inference=with_inference,
@@ -206,6 +226,16 @@ def init(
     help="Databricks production workspace URL. Optional.",
 )
 @click.option(
+    "--catalog-name",
+    prompt="Unity Catalog name",
+    help="Unity Catalog catalog name (e.g. us_comm_lakehouse_dev).",
+)
+@click.option(
+    "--schema-name",
+    prompt="Unity Catalog schema (database)",
+    help="Unity Catalog schema (database) where models will be registered.",
+)
+@click.option(
     "--skip-inference",
     is_flag=True,
     help="Skip batch inference job generation.",
@@ -215,6 +245,8 @@ def new(
     project_name: str,
     staging_url: str,
     prod_url: str,
+    catalog_name: str,
+    schema_name: str,
     skip_inference: bool,
     with_dqx: bool,
 ) -> None:
@@ -228,6 +260,8 @@ def new(
     config = ProjectConfig(
         project_name=project_name,
         staging_workspace_url=_sanitize_url(staging_url),
+        catalog_name=catalog_name,
+        schema_name=schema_name,
         prod_workspace_url=_sanitize_url(prod_url) if prod_url else "",
         with_inference=not skip_inference,
         with_dqx=with_dqx,

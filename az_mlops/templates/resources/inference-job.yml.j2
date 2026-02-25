@@ -1,12 +1,14 @@
 resources:
   jobs:
     batch_inference_job:
-      name: ${bundle.target}-{{ project_name }}-batch-inference-job
+      name: ${bundle.target}-${var.schema_name}-batch-inference-job
 
       environments:
         - environment_key: mlops_env
           spec:
             client: "1"
+            dependencies:
+              - mlflow
 
       tasks:
         - task_key: batch_inference
@@ -15,9 +17,9 @@ resources:
             notebook_path: ../mlops/run_inference.py
             base_parameters:
               env: ${bundle.target}
-              input_table_name: ${var.catalog_name}.{{ project_name }}.inference_input
-              output_table_name: ${var.catalog_name}.{{ project_name }}.predictions
-              model_name: ${var.catalog_name}.{{ project_name }}.${var.model_name}
+              input_table_name: ${var.catalog_name}.${var.schema_name}.inference_input
+              output_table_name: ${var.catalog_name}.${var.schema_name}.predictions
+              model_name: ${var.catalog_name}.${var.schema_name}.${var.model_name}
 
       schedule:
         quartz_cron_expression: "0 0 11 * * ?"

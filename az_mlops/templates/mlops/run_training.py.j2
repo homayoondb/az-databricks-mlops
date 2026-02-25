@@ -14,6 +14,7 @@ What this does automatically:
 """
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -48,6 +49,10 @@ notebook_workspace_path = context.notebookPath().get()
 project_root = Path("/Workspace" + notebook_workspace_path).parent.parent
 script_path = project_root / "{{ training_notebook }}"
 print(f"Loading training script from: {script_path}")
+
+# Change working directory to project root so relative paths in the
+# training script (e.g. "data/houses.csv") resolve correctly.
+os.chdir(project_root)
 
 # COMMAND ----------
 
