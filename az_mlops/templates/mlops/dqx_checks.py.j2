@@ -1,0 +1,25 @@
+"""DQX data quality checks for training data.
+
+Runs before model training to ensure data meets quality standards.
+Customize the rules below for your dataset.
+
+Requires: pip install databricks-dqx
+"""
+
+from databricks.labs.dqx.col_functions import is_not_null, is_in_range
+
+
+def get_quality_rules():
+    """Return DQX quality rules for the training dataset.
+
+    Each rule specifies a column-level check. If any rule fails,
+    the training pipeline will be blocked (fail mode).
+
+    Customize these rules based on your training data schema.
+    """
+    return [
+        # Example: ensure critical columns are not null
+        is_not_null("target_column"),
+        # Example: ensure numeric features are within expected range
+        is_in_range("feature_1", min_val=0, max_val=1000),
+    ]

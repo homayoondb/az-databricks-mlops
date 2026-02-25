@@ -1,0 +1,42 @@
+bundle:
+  name: {{ project_name }}
+
+variables:
+  experiment_name:
+    description: MLflow experiment path for model training.
+    default: /Users/${workspace.current_user.userName}/${bundle.target}-{{ project_name }}-experiment
+
+  model_name:
+    description: Registered model name in Unity Catalog.
+    default: {{ project_name }}
+
+  catalog_name:
+    description: Unity Catalog catalog name (maps to environment).
+
+include:
+  - ./resources/training-job.yml
+  - ./resources/inference-job.yml
+{%- if with_dqx %}
+  - ./resources/dqx-job.yml
+{%- endif %}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog_name: dev
+    workspace:
+      host: {{ staging_workspace_url }}
+
+  staging:
+    variables:
+      catalog_name: staging
+    workspace:
+      host: {{ staging_workspace_url }}
+
+  prod:
+    variables:
+      catalog_name: prod
+    workspace:
+      host: {{ prod_workspace_url }}

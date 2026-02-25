@@ -1,0 +1,68 @@
+new_cluster: &new_cluster
+  new_cluster:
+    num_workers: 3
+    spark_version: 15.3.x-cpu-ml-scala2.12
+    node_type_id: m5.xlarge
+    data_security_mode: SINGLE_USER
+
+resources:
+  jobs:
+    model_training_job:
+      name: ${bundle.target}-{{ project_name }}-model-training-job
+      job_clusters:
+        - job_cluster_key: training_cluster
+          <<: *new_cluster
+
+      tasks:
+{%- if with_dqx %}
+        - task_key: DataQuality
+          job_cluster_key: training_cluster
+          notebook_task:
+            notebook_path: ../mlops/dqx_checks.py
+            base_parameters:
+              env: ${bundle.target}
+              catalog_name: ${var.catalog_name}
+{% endif %}
+        - task_key: Train
+          job_cluster_key: training_cluster
+{%- if with_dqx %}
+          depends_on:
+            - task_key: DataQuality
+{%- endif %}
+          notebook_task:
+            notebook_path: ../training/notebooks/Train.py
+            base_parameters:
+              env: ${bundle.target}
+              experiment_name: ${var.experiment_name}
+              model_name: ${var.catalog_name}.{{ project_name }}.${var.model_name}
+
+        - task_key: ModelValidation
+          job_cluster_key: training_cluster
+          depends_on:
+            - task_key: Train
+          notebook_task:
+            notebook_path: ../mlops/run_validation.py
+            base_parameters:
+              env: ${bundle.target}
+              experiment_name: ${var.experiment_name}
+              model_name: ${var.catalog_name}.{{ project_name }}.${var.model_name}
+              run_mode: dry_run
+              model_type: regressor
+
+        - task_key: ModelDeployment
+          job_cluster_key: training_cluster
+          depends_on:
+            - task_key: ModelValidation
+          notebook_task:
+            notebook_path: ../mlops/run_deploy.py
+            base_parameters:
+              env: ${bundle.target}
+              model_name: ${var.catalog_name}.{{ project_name }}.${var.model_name}
+
+      schedule:
+        quartz_cron_expression: "0 0 9 * * ?"
+        timezone_id: UTC
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

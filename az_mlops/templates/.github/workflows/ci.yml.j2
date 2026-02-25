@@ -1,0 +1,43 @@
+name: "CI: Validate & Test"
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DATABRICKS_TOKEN: ${{ "{{" }} secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
+  DATABRICKS_HOST: {{ staging_workspace_url }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [staging, prod]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: databricks/setup-cli@main
+
+      - name: Validate bundle (${{ "{{" }} matrix.target {{ "}}" }})
+        run: databricks bundle validate -t ${{ "{{" }} matrix.target {{ "}}" }}
+        env:
+          DATABRICKS_TOKEN: ${{ "{{" }} matrix.target == 'prod' && secrets.PROD_WORKSPACE_TOKEN || secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt 2>/dev/null || true
+          pip install pytest
+
+      - name: Run tests
+        run: pytest tests/ -v
