@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-az-databricks-mlops = "az_mlops.cli:cli"
+adm = "az_mlops.cli:cli"
 
 [project.optional-dependencies]
 dev = [

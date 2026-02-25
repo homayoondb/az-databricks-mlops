@@ -1,4 +1,4 @@
-"""CLI entry point for az-mlops."""
+"""CLI entry point for adm."""
 
 from __future__ import annotations
 
@@ -243,7 +243,7 @@ def new(
 
 @cli.command()
 def clean() -> None:
-    """Remove all az-mlops generated files from the current directory."""
+    """Remove all adm generated files from the current directory."""
     cwd = Path.cwd()
 
     all_templates = list(CORE_TEMPLATES) + list(INFERENCE_TEMPLATES) + list(DQX_TEMPLATES)
@@ -267,7 +267,7 @@ def clean() -> None:
         for r in removed:
             click.echo(f"  Removed {r}")
         click.echo()
-        click.echo(f"Cleaned {len(removed)} files. Ready for a fresh `az-mlops init`.")
+        click.echo(f"Cleaned {len(removed)} files. Ready for a fresh `adm init`.")
     else:
         click.echo("Nothing to clean — no generated files found.")
 
@@ -285,7 +285,7 @@ def run(target: str) -> None:
 
     databricks_yml = cwd / "databricks.yml"
     if not databricks_yml.exists():
-        raise click.ClickException("No databricks.yml found. Run `az-mlops init` first.")
+        raise click.ClickException("No databricks.yml found. Run `adm init` first.")
 
     bundle = yaml.safe_load(databricks_yml.read_text())
     project_name = bundle.get("bundle", {}).get("name", cwd.name)
@@ -360,7 +360,7 @@ def run(target: str) -> None:
 
 @cli.group()
 def add() -> None:
-    """Add optional components to an existing az-mlops project."""
+    """Add optional components to an existing adm project."""
 
 
 @add.command("dqx")
@@ -370,7 +370,7 @@ def add_dqx(overwrite: bool) -> None:
     config_path = Path.cwd() / "mlops" / "config.py"
     if not config_path.exists():
         raise click.ClickException(
-            "No mlops/config.py found. Run `az-mlops init` first."
+            "No mlops/config.py found. Run `adm init` first."
         )
 
     config_text = config_path.read_text()
