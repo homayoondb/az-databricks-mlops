@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+import yaml
 
 from az_mlops.generator import (
     ProjectConfig,
@@ -230,23 +231,24 @@ def _extract_config_value(text: str, variable: str) -> str:
     """Extract a variable assignment value from config.py content."""
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith(f"{variable}") and "=" in stripped:
+        if stripped.startswith(variable) and "=" in stripped:
             _, _, value = stripped.partition("=")
             return value.strip().strip('"').strip("'")
-    return "my_project"
+    raise click.ClickException(
+        f"Could not find {variable} in mlops/config.py"
+    )
 
 
 def _extract_yaml_host(text: str, target: str) -> str:
     """Extract workspace host URL from databricks.yml for a given target."""
-    in_target = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped == f"{target}:":
-            in_target = True
-            continue
-        if in_target and stripped.startswith("host:"):
-            return stripped.split(":", 1)[1].strip()
-        if in_target and not stripped.startswith("#") and ":" in stripped and not stripped.startswith("host") and not stripped.startswith("catalog") and not stripped.startswith("variable"):
-            if line[0] != " " or (len(line) - len(line.lstrip())) <= 4:
-                in_target = False
-    return ""
+    try:
+        bundle = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise click.ClickException(f"Failed to parse databricks.yml: {e}")
+
+    try:
+        return bundle["targets"][target]["workspace"]["host"]
+    except (KeyError, TypeError):
+        raise click.ClickException(
+            f"Could not find targets.{target}.workspace.host in databricks.yml"
+        )
