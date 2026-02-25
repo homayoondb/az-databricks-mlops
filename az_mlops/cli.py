@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -48,6 +49,13 @@ def _prompt_notebook(label: str, directory: Path, default: str) -> str:
         return choice
     else:
         return click.prompt(f"  {label}", default=default)
+
+
+def _sanitize_url(value: str) -> str:
+    """Strip control/escape characters; return empty string if not a valid URL."""
+    # Remove ANSI escape sequences (e.g. arrow keys: \x1b[C) and other control chars
+    clean = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", value).strip()
+    return clean if clean.startswith("http") else ""
 
 
 def _detect_staging_url(directory: Path) -> str:
@@ -157,8 +165,8 @@ def init(
 
     config = ProjectConfig(
         project_name=project_name,
-        staging_workspace_url=staging_url.rstrip("/"),
-        prod_workspace_url=prod_url.strip().rstrip("/") if prod_url else "",
+        staging_workspace_url=_sanitize_url(staging_url),
+        prod_workspace_url=_sanitize_url(prod_url) if prod_url else "",
         training_notebook=training_notebook,
         with_inference=with_inference,
         inference_notebook=inference_notebook or "",
@@ -175,9 +183,12 @@ def init(
 
     if valid:
         click.echo()
-        if click.confirm("  Run the training job now?", default=False):
-            ctx = click.get_current_context()
-            ctx.invoke(run)
+        try:
+            if click.confirm("  Run the training job now?", default=False):
+                ctx = click.get_current_context()
+                ctx.invoke(run)
+        except click.Abort:
+            pass  # non-interactive — skip silently
 
 
 @cli.command()
@@ -216,8 +227,8 @@ def new(
 
     config = ProjectConfig(
         project_name=project_name,
-        staging_workspace_url=staging_url.rstrip("/"),
-        prod_workspace_url=prod_url.strip().rstrip("/") if prod_url else "",
+        staging_workspace_url=_sanitize_url(staging_url),
+        prod_workspace_url=_sanitize_url(prod_url) if prod_url else "",
         with_inference=not skip_inference,
         with_dqx=with_dqx,
     )
