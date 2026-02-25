@@ -48,16 +48,20 @@ def test_core_templates_rendered(config):
         "resources/inference-job.yml",
         "mlops/__init__.py",
         "mlops/config.py",
+        "mlops/run_training.py",
         "mlops/validation.py",
-        "mlops/deploy.py",
         "mlops/run_validation.py",
+        "mlops/deploy.py",
         "mlops/run_deploy.py",
-        ".github/workflows/ci.yml",
-        ".github/workflows/cd.yml",
-        "GETTING_STARTED.md",
+        "mlops/run_inference.py",
     ]
     for f in expected_files:
         assert f in rendered, f"Missing: {f}"
+
+    # GitHub Actions and GETTING_STARTED should NOT be generated
+    assert ".github/workflows/ci.yml" not in rendered
+    assert ".github/workflows/cd.yml" not in rendered
+    assert "GETTING_STARTED.md" not in rendered
 
 
 def test_dqx_templates_included_when_enabled(config_with_dqx):
@@ -100,12 +104,24 @@ def test_databricks_yml_excludes_dqx_by_default(config):
     assert "dqx" not in content
 
 
-def test_training_job_uses_custom_notebook(config):
+def test_training_job_points_to_wrapper(config):
     rendered = render_templates(config)
     content = rendered["resources/training-job.yml"]
 
-    assert "notebooks/train.py" in content
+    assert "../mlops/run_training.py" in content
     assert "model-training-job" in content
+    # Should NOT reference user's notebook directly in job YAML
+    assert "notebooks/train.py" not in content
+
+
+def test_run_training_references_user_notebook(config):
+    rendered = render_templates(config)
+    content = rendered["mlops/run_training.py"]
+
+    assert "notebooks/train.py" in content
+    assert "mlflow.autolog" in content
+    assert "register_model" in content
+    assert "challenger" in content
 
 
 def test_training_job_has_dqx_task_when_enabled(config_with_dqx):
@@ -123,10 +139,26 @@ def test_training_job_no_dqx_task_by_default(config):
     assert "DataQuality" not in content
 
 
+def test_inference_job_points_to_wrapper(config):
+    rendered = render_templates(config)
+    content = rendered["resources/inference-job.yml"]
+
+    assert "../mlops/run_inference.py" in content
+
+
+def test_run_inference_loads_champion(config):
+    rendered = render_templates(config)
+    content = rendered["mlops/run_inference.py"]
+
+    assert "@champion" in content
+    assert "predict" in content
+
+
 def test_inference_job_excluded_when_skipped(config_no_inference):
     rendered = render_templates(config_no_inference)
 
     assert "resources/inference-job.yml" not in rendered
+    assert "mlops/run_inference.py" not in rendered
     assert "inference" not in rendered["databricks.yml"]
 
 
@@ -134,6 +166,7 @@ def test_inference_job_included_by_default(config):
     rendered = render_templates(config)
 
     assert "resources/inference-job.yml" in rendered
+    assert "mlops/run_inference.py" in rendered
 
 
 def test_config_py_has_model_name(config):
@@ -151,24 +184,6 @@ def test_validation_py_has_thresholds(config):
     assert "max_error" in content
 
 
-def test_ci_workflow_references_staging(config):
-    rendered = render_templates(config)
-    content = rendered[".github/workflows/ci.yml"]
-
-    assert "staging.cloud.databricks.com" in content
-    assert "bundle validate" in content
-
-
-def test_cd_workflow_has_both_targets(config):
-    rendered = render_templates(config)
-    content = rendered[".github/workflows/cd.yml"]
-
-    assert "deploy-staging" in content
-    assert "deploy-prod" in content
-    assert "STAGING_WORKSPACE_TOKEN" in content
-    assert "PROD_WORKSPACE_TOKEN" in content
-
-
 def test_no_prod_target_when_url_empty():
     config = ProjectConfig(
         project_name="test_project",
@@ -180,14 +195,6 @@ def test_no_prod_target_when_url_empty():
     bundle = yaml.safe_load(rendered["databricks.yml"])
     assert "staging" in bundle["targets"]
     assert "prod" not in bundle["targets"]
-
-    cd = rendered[".github/workflows/cd.yml"]
-    assert "deploy-staging" in cd
-    assert "deploy-prod" not in cd
-
-    ci = rendered[".github/workflows/ci.yml"]
-    assert "staging" in ci
-    assert "PROD_WORKSPACE_TOKEN" not in ci
 
 
 def test_deploy_py_has_promotion_logic(config):
@@ -204,15 +211,6 @@ def test_gitignore_generated(config):
 
     assert ".gitignore" in rendered
     assert "__pycache__" in rendered[".gitignore"]
-
-
-def test_getting_started_references_training_notebook(config):
-    rendered = render_templates(config)
-    content = rendered["GETTING_STARTED.md"]
-
-    assert "notebooks/train.py" in content
-    assert "Step 1" in content
-    assert "STAGING_WORKSPACE_TOKEN" in content
 
 
 def test_find_notebooks(tmp_path):

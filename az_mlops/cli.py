@@ -8,7 +8,11 @@ import click
 import yaml
 
 from az_mlops.generator import (
+    CORE_TEMPLATES,
+    DQX_TEMPLATES,
+    INFERENCE_TEMPLATES,
     ProjectConfig,
+    _output_path,
     find_notebooks,
     render_templates,
     write_files,
@@ -44,24 +48,44 @@ def _prompt_notebook(label: str, directory: Path, default: str) -> str:
         return click.prompt(f"  {label}", default=default)
 
 
+def _detect_staging_url(directory: Path) -> str:
+    """Try to detect staging workspace URL from existing databricks.yml."""
+    databricks_yml = directory / "databricks.yml"
+    if not databricks_yml.exists():
+        return ""
+    try:
+        bundle = yaml.safe_load(databricks_yml.read_text())
+        return bundle["targets"]["staging"]["workspace"]["host"]
+    except (yaml.YAMLError, KeyError, TypeError):
+        return ""
+
+
+def _detect_prod_url(directory: Path) -> str:
+    """Try to detect prod workspace URL from existing databricks.yml."""
+    databricks_yml = directory / "databricks.yml"
+    if not databricks_yml.exists():
+        return ""
+    try:
+        bundle = yaml.safe_load(databricks_yml.read_text())
+        return bundle["targets"]["prod"]["workspace"]["host"]
+    except (yaml.YAMLError, KeyError, TypeError):
+        return ""
+
+
 @cli.command()
 @click.option(
     "--project-name",
-    prompt="Project name",
-    default=lambda: Path.cwd().name,
-    show_default="current directory name",
+    default=None,
     help="Name for the ML project.",
 )
 @click.option(
     "--staging-url",
-    prompt="Staging workspace URL",
+    default=None,
     help="Databricks staging workspace URL.",
 )
 @click.option(
     "--prod-url",
-    default="",
-    prompt="Prod workspace URL (enter to skip)",
-    prompt_required=False,
+    default=None,
     help="Databricks production workspace URL. Optional.",
 )
 @click.option(
@@ -82,9 +106,9 @@ def _prompt_notebook(label: str, directory: Path, default: str) -> str:
 @click.option("--with-dqx", is_flag=True, help="Include DQX data quality checks.")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
 def init(
-    project_name: str,
-    staging_url: str,
-    prod_url: str,
+    project_name: str | None,
+    staging_url: str | None,
+    prod_url: str | None,
     training_notebook: str | None,
     inference_notebook: str | None,
     skip_inference: bool,
@@ -94,11 +118,27 @@ def init(
     """Add MLOps scaffolding to an existing project."""
     cwd = Path.cwd()
 
+    # Smart defaults: detect from existing files or use folder name
+    if project_name is None:
+        project_name = click.prompt("Project name", default=cwd.name)
+
+    if staging_url is None:
+        detected = _detect_staging_url(cwd)
+        staging_url = click.prompt("Staging workspace URL", default=detected or None)
+
+    if prod_url is None:
+        detected = _detect_prod_url(cwd)
+        prod_url = click.prompt(
+            "Prod workspace URL (enter to skip)",
+            default=detected or "",
+            show_default=bool(detected),
+        )
+
     if training_notebook is None:
         training_notebook = _prompt_notebook(
             "Training notebook/script",
             cwd,
-            default="training/notebooks/Train.py",
+            default="train.py",
         )
 
     with_inference = not skip_inference
@@ -108,7 +148,7 @@ def init(
             inference_notebook = _prompt_notebook(
                 "Inference notebook/script",
                 cwd,
-                default="deployment/batch_inference/notebooks/BatchInference.py",
+                default="predict.py",
             )
         else:
             with_inference = False
@@ -129,7 +169,7 @@ def init(
     for path in created:
         click.echo(f"  Created {path.relative_to(cwd)}")
     click.echo()
-    click.echo("Done! Next steps are in GETTING_STARTED.md")
+    click.echo("Done! Run `databricks bundle validate` to verify.")
 
 
 @cli.command()
@@ -179,7 +219,38 @@ def new(
     for path in created:
         click.echo(f"  Created {path.relative_to(Path.cwd())}")
     click.echo()
-    click.echo(f"Done! See {project_name}/GETTING_STARTED.md for next steps.")
+    click.echo(f"Done! Run `cd {project_name} && databricks bundle validate` to verify.")
+
+
+@cli.command()
+def clean() -> None:
+    """Remove all az-mlops generated files from the current directory."""
+    cwd = Path.cwd()
+
+    all_templates = list(CORE_TEMPLATES) + list(INFERENCE_TEMPLATES) + list(DQX_TEMPLATES)
+    generated_files = [_output_path(t) for t in all_templates]
+
+    removed: list[str] = []
+    for rel_path in generated_files:
+        target = cwd / rel_path
+        if target.exists():
+            target.unlink()
+            removed.append(rel_path)
+
+    # Clean up empty directories left behind
+    for dir_name in ["mlops", "resources"]:
+        d = cwd / dir_name
+        if d.exists() and not any(d.iterdir()):
+            d.rmdir()
+            removed.append(f"{dir_name}/")
+
+    if removed:
+        for r in removed:
+            click.echo(f"  Removed {r}")
+        click.echo()
+        click.echo(f"Cleaned {len(removed)} files. Ready for a fresh `az-mlops init`.")
+    else:
+        click.echo("Nothing to clean — no generated files found.")
 
 
 @cli.group()

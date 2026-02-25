@@ -1,0 +1,75 @@
+# Databricks notebook source
+"""MLOps training wrapper.
+
+Wraps your existing training script ({{ training_notebook }}) with
+automatic MLflow tracking and Unity Catalog model registration.
+Your training code does NOT need any modifications.
+
+What this does automatically:
+  1. Sets up the MLflow experiment
+  2. Enables mlflow.autolog() — captures model, metrics, params
+  3. Runs your training script
+  4. Registers the logged model in Unity Catalog
+  5. Sets the "challenger" alias for validation
+"""
+
+import importlib.util
+import sys
+from pathlib import Path
+
+import mlflow
+from mlflow import MlflowClient
+
+# COMMAND ----------
+
+dbutils.widgets.text("experiment_name", "")
+dbutils.widgets.text("model_name", "")
+dbutils.widgets.text("env", "dev")
+
+experiment_name = dbutils.widgets.get("experiment_name")
+model_name = dbutils.widgets.get("model_name")
+env = dbutils.widgets.get("env")
+
+# COMMAND ----------
+
+# 1. Configure MLflow
+mlflow.set_experiment(experiment_name)
+mlflow.autolog(log_models=True)
+
+# COMMAND ----------
+
+# 2. Run user's training script inside an MLflow run
+#    autolog captures the model, metrics, and parameters automatically
+with mlflow.start_run() as run:
+    # Load and execute the user's training script
+    script_path = Path("../{{ training_notebook }}")
+    spec = importlib.util.spec_from_file_location("user_training", script_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["user_training"] = module
+    spec.loader.exec_module(module)
+
+    run_id = run.info.run_id
+    print(f"Training complete. MLflow run: {run_id}")
+
+# COMMAND ----------
+
+# 3. Register the model in Unity Catalog
+client = MlflowClient()
+
+# Find the model artifact logged by autolog
+artifacts = [a.path for a in client.list_artifacts(run_id) if a.is_dir]
+model_artifact = "model"
+for a in artifacts:
+    if "model" in a.lower():
+        model_artifact = a
+        break
+
+model_uri = f"runs:/{run_id}/{model_artifact}"
+mv = mlflow.register_model(model_uri, model_name)
+print(f"Registered model: {model_name} version {mv.version}")
+
+# COMMAND ----------
+
+# 4. Set "challenger" alias so validation can evaluate it
+client.set_registered_model_alias(model_name, "challenger", mv.version)
+print(f"Set 'challenger' alias on version {mv.version}")

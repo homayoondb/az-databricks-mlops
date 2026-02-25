@@ -1,14 +1,14 @@
 # az-mlops
 
-Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~12 files — no complex templates, no 20-question wizards.
+Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~10 files — no complex templates, no 20-question wizards, no code changes to your existing scripts.
 
-Built for AWS Databricks with Unity Catalog and GitHub Actions.
+Built for AWS Databricks with Unity Catalog.
 
 ## Why?
 
-Most ML teams have working models but no production pipeline. Setting up MLOps from scratch means figuring out Databricks Asset Bundles, model validation, CI/CD workflows, and deployment promotion — all from blank files.
+Most ML teams have working models but no production pipeline. Setting up MLOps from scratch means figuring out Databricks Asset Bundles, model registration, validation, and deployment promotion — all from blank files.
 
-`az-mlops` does it in one command. You point it at your training script, answer 3 prompts, and get a production-ready pipeline.
+`az-mlops` does it in one command. You point it at your training script, answer 3 prompts, and get a production-ready pipeline. **Your existing training code stays untouched** — the tool wraps it with automatic MLflow tracking, model registration, and validation.
 
 ## Installation
 
@@ -32,8 +32,7 @@ az-mlops init
 
 # Or create a new project from scratch
 az-mlops new my_project \
-  --staging-url https://staging.cloud.databricks.com \
-  --prod-url https://prod.cloud.databricks.com
+  --staging-url https://staging.cloud.databricks.com
 ```
 
 ### What `az-mlops init` looks like
@@ -44,7 +43,7 @@ $ az-mlops init
 
 Project name [my_ml_project]:
 Staging workspace URL: https://staging.cloud.databricks.com
-Prod workspace URL: https://prod.cloud.databricks.com
+Prod workspace URL (enter to skip):
 
   Found notebooks/scripts in your project:
     1. notebooks/train_model.py
@@ -52,20 +51,20 @@ Prod workspace URL: https://prod.cloud.databricks.com
     3. src/preprocess.py
 
   Training notebook/script (number or path) [training/notebooks/Train.py]: 1
-  Include batch inference job? [Y/n]: n
+  Include batch inference job? [Y/n]: y
 
   Created .gitignore
   Created databricks.yml
   Created resources/training-job.yml
+  Created mlops/run_training.py
   Created mlops/config.py
   Created mlops/validation.py
   ...
-  Created GETTING_STARTED.md
 
-Done! Next steps are in GETTING_STARTED.md
+Done! Run `databricks bundle validate` to verify.
 ```
 
-The CLI scans your project for `.py` and `.ipynb` files so you can pick your training script by number instead of typing the path. After that, open `GETTING_STARTED.md` — it's a 4-step checklist personalized to your project.
+The CLI scans your project for `.py` and `.ipynb` files so you can pick your training script by number instead of typing the path.
 
 ## What gets generated
 
@@ -73,23 +72,36 @@ The CLI scans your project for `.py` and `.ipynb` files so you can pick your tra
 my_project/
 ├── .gitignore
 ├── databricks.yml              # Bundle config: dev/staging/prod targets
-├── GETTING_STARTED.md          # 4-step onboarding checklist
 ├── resources/
 │   ├── training-job.yml        # Train → Validate → Deploy workflow
 │   └── inference-job.yml       # Scheduled batch inference (optional)
 ├── mlops/
 │   ├── __init__.py
 │   ├── config.py               # Project config (model name, catalog, schema)
+│   ├── run_training.py         # Wraps YOUR script with MLflow + UC registration
 │   ├── validation.py           # Model quality thresholds (customizable)
-│   ├── run_validation.py       # Notebook: runs mlflow.evaluate() with thresholds
+│   ├── run_validation.py       # Runs mlflow.evaluate() with thresholds
 │   ├── deploy.py               # UC alias promotion logic
-│   └── run_deploy.py           # Notebook: runs promotion (challenger → champion)
-└── .github/workflows/
-    ├── ci.yml                  # PR: bundle validate + pytest
-    └── cd.yml                  # Deploy: staging on main, prod on tag
+│   ├── run_deploy.py           # Runs promotion (challenger → champion)
+│   └── run_inference.py        # Loads champion model, scores input table
+└── [existing ML code untouched]
 ```
 
-Existing code is never modified — only new files are added alongside it.
+**Your existing code is never modified** — only new files are added alongside it.
+
+## How it works (zero code changes)
+
+The key insight: `mlops/run_training.py` wraps your existing training script automatically:
+
+1. Sets up MLflow experiment tracking
+2. Enables `mlflow.autolog()` — captures model, metrics, and parameters
+3. Executes your training script (unchanged)
+4. Registers the logged model in Unity Catalog
+5. Sets the "challenger" alias for validation
+
+Your training script doesn't need `import mlflow` or any modifications. The wrapper handles everything.
+
+Similarly, `mlops/run_inference.py` loads the champion model from Unity Catalog and scores your input table — no inference code changes needed.
 
 ## Try it on a real (messy) project
 
@@ -105,7 +117,7 @@ Or do it manually:
 cd examples/messy-ml-project
 python notebooks/train_model_v3_FINAL.py   # verify it works
 az-mlops init                               # add MLOps
-cat GETTING_STARTED.md                      # see what to do next
+databricks bundle validate                  # verify bundle
 ```
 
 ## Commands
@@ -118,7 +130,7 @@ Add MLOps scaffolding to the current directory.
 # Interactive (discovers your notebooks, prompts for choices)
 az-mlops init
 
-# Non-interactive (CI-friendly)
+# Non-interactive
 az-mlops init \
   --project-name my_project \
   --staging-url https://staging.cloud.databricks.com \
@@ -140,8 +152,16 @@ Create a new project directory with MLOps scaffolding.
 
 ```bash
 az-mlops new my_project \
-  --staging-url https://staging.cloud.databricks.com \
-  --prod-url https://prod.cloud.databricks.com
+  --staging-url https://staging.cloud.databricks.com
+```
+
+### `az-mlops clean`
+
+Remove all az-mlops generated files from the current directory — useful for re-running `init` with different settings.
+
+```bash
+az-mlops clean    # removes generated files, keeps your code
+az-mlops init     # start fresh
 ```
 
 ### `az-mlops add dqx`
@@ -154,38 +174,11 @@ az-mlops add dqx
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.
 
-## DQX integration (optional)
-
-DQX data quality checks are opt-in, either at init time or later:
-
-```bash
-# At project creation
-az-mlops init --with-dqx
-
-# Or add later to an existing project
-az-mlops add dqx
-```
-
-When enabled, a `DataQuality` task runs before training and blocks it if checks fail. This keeps the default experience minimal while letting teams adopt data quality incrementally.
-
-## Deployment flow
-
-1. **PR opened** → `ci.yml` validates the bundle against staging and prod, runs `pytest`
-2. **Merge to main** → `cd.yml` deploys to the staging workspace
-3. **Push a tag (`v*`)** → `cd.yml` deploys to prod
-
-### Required GitHub secrets
-
-| Secret | Purpose |
-|--------|---------|
-| `STAGING_WORKSPACE_TOKEN` | Databricks PAT for staging workspace |
-| `PROD_WORKSPACE_TOKEN` | Databricks PAT for prod workspace |
-
 ## Training pipeline
 
-The generated training job runs three tasks in sequence:
+The generated training job runs these tasks in sequence:
 
-1. **Train** — runs your training notebook, logs to MLflow, registers the model in Unity Catalog
+1. **Train** — wraps your training script with `mlflow.autolog()`, registers model in Unity Catalog
 2. **ModelValidation** — evaluates the model against configurable thresholds (edit `mlops/validation.py`)
 3. **ModelDeployment** — promotes the model via UC aliases (`challenger` → `champion`)
 
@@ -203,9 +196,8 @@ pytest tests/ -v
 
 ## Customization
 
-- **Training notebook** — change `notebook_path` in `resources/training-job.yml`
-- **Cluster config** — edit node type, workers, Spark version in resource YAMLs
 - **Validation thresholds** — edit `mlops/validation.py` (metric names, threshold values)
+- **Cluster config** — edit node type, workers, Spark version in resource YAMLs
 - **Schedule** — edit the `schedule` block in any resource YAML (cron expression)
 - **Model promotion logic** — edit `mlops/deploy.py`
 - **DQX rules** — edit `mlops/dqx_checks.py` (add/remove column-level checks)

@@ -43,11 +43,10 @@ def test_new_creates_project(runner, tmp_path):
     assert (project_dir / "mlops" / "config.py").exists()
     assert (project_dir / "mlops" / "validation.py").exists()
     assert (project_dir / "mlops" / "deploy.py").exists()
+    assert (project_dir / "mlops" / "run_training.py").exists()
     assert (project_dir / "mlops" / "run_validation.py").exists()
     assert (project_dir / "mlops" / "run_deploy.py").exists()
-    assert (project_dir / ".github" / "workflows" / "ci.yml").exists()
-    assert (project_dir / ".github" / "workflows" / "cd.yml").exists()
-    assert (project_dir / "GETTING_STARTED.md").exists()
+    assert (project_dir / "mlops" / "run_inference.py").exists()
 
     # DQX not included by default
     assert not (project_dir / "resources" / "dqx-job.yml").exists()
@@ -155,7 +154,7 @@ def test_init_creates_files_in_cwd(runner, tmp_path):
     assert result.exit_code == 0, result.output
     assert (tmp_path / "databricks.yml").exists()
     assert (tmp_path / "mlops" / "config.py").exists()
-    assert (tmp_path / "GETTING_STARTED.md").exists()
+    assert (tmp_path / "mlops" / "run_training.py").exists()
 
 
 def test_init_refuses_overwrite_by_default(runner, tmp_path):
@@ -212,3 +211,68 @@ def test_add_dqx_fails_without_init(runner, tmp_path):
     result = runner.invoke(cli, ["add", "dqx"])
     assert result.exit_code != 0
     assert "config.py" in result.output
+
+
+def test_clean_removes_generated_files(runner, tmp_path):
+    os.chdir(tmp_path)
+    # First generate files
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--project-name", "clean_test",
+            "--staging-url", "https://staging.example.com",
+            "--prod-url", "",
+            "--training-notebook", "train.py",
+            "--skip-inference",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "databricks.yml").exists()
+    assert (tmp_path / "mlops" / "config.py").exists()
+
+    # Now clean
+    result = runner.invoke(cli, ["clean"])
+    assert result.exit_code == 0, result.output
+    assert "Cleaned" in result.output
+
+    assert not (tmp_path / "databricks.yml").exists()
+    assert not (tmp_path / "mlops" / "config.py").exists()
+    assert not (tmp_path / "resources").exists()
+
+
+def test_clean_nothing_to_clean(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(cli, ["clean"])
+    assert result.exit_code == 0
+    assert "Nothing to clean" in result.output
+
+
+def test_clean_preserves_user_files(runner, tmp_path):
+    os.chdir(tmp_path)
+    # Create user files
+    (tmp_path / "train.py").write_text("# my training code")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "input.csv").write_text("a,b\n1,2")
+
+    # Generate mlops files
+    runner.invoke(
+        cli,
+        [
+            "init",
+            "--project-name", "preserve_test",
+            "--staging-url", "https://staging.example.com",
+            "--prod-url", "",
+            "--training-notebook", "train.py",
+            "--skip-inference",
+        ],
+    )
+
+    # Clean
+    runner.invoke(cli, ["clean"])
+
+    # User files untouched
+    assert (tmp_path / "train.py").exists()
+    assert (tmp_path / "data" / "input.csv").exists()
+    # Generated files gone
+    assert not (tmp_path / "databricks.yml").exists()

@@ -25,7 +25,7 @@ echo "=== Step 3: Add MLOps with az-mlops ==="
 az-mlops init \
   --project-name house_prices \
   --staging-url https://staging.cloud.databricks.com \
-  --prod-url https://prod.cloud.databricks.com \
+  --prod-url "" \
   --training-notebook notebooks/train_model_v3_FINAL.py \
   --skip-inference
 echo ""
@@ -34,13 +34,12 @@ echo "=== Step 4: Here's what the project looks like now ==="
 find . -type f -not -path './.git/*' -not -name 'model.pkl' | sort
 echo ""
 
-echo "=== Step 5: Training job points to their actual notebook ==="
-grep "notebook_path.*train" resources/training-job.yml
+echo "=== Step 5: Training wrapper references their actual notebook ==="
+grep "train_model_v3_FINAL" mlops/run_training.py
 echo ""
 
-echo "=== Step 6: GETTING_STARTED.md has a personalized guide ==="
-head -20 GETTING_STARTED.md
-echo "..."
+echo "=== Step 6: Training job uses the wrapper (not user's script directly) ==="
+grep "notebook_path.*run_training" resources/training-job.yml
 echo ""
 
 echo "=== Done! Temp dir: $WORK_DIR ==="

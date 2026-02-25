@@ -14,17 +14,16 @@ CORE_TEMPLATES: list[str] = [
     "resources/training-job.yml.j2",
     "mlops/__init__.py.j2",
     "mlops/config.py.j2",
+    "mlops/run_training.py.j2",
     "mlops/validation.py.j2",
-    "mlops/deploy.py.j2",
     "mlops/run_validation.py.j2",
+    "mlops/deploy.py.j2",
     "mlops/run_deploy.py.j2",
-    ".github/workflows/ci.yml.j2",
-    ".github/workflows/cd.yml.j2",
-    "GETTING_STARTED.md.j2",
 ]
 
 INFERENCE_TEMPLATES: list[str] = [
     "resources/inference-job.yml.j2",
+    "mlops/run_inference.py.j2",
 ]
 
 DQX_TEMPLATES: list[str] = [
@@ -40,9 +39,9 @@ class ProjectConfig:
     project_name: str
     staging_workspace_url: str
     prod_workspace_url: str = ""
-    training_notebook: str = "training/notebooks/Train.py"
+    training_notebook: str = "train.py"
     with_inference: bool = True
-    inference_notebook: str = "deployment/batch_inference/notebooks/BatchInference.py"
+    inference_notebook: str = "predict.py"
     with_dqx: bool = False
 
 
@@ -112,7 +111,6 @@ def find_notebooks(directory: Path) -> list[str]:
 
     for pattern in patterns:
         for path in directory.glob(pattern):
-            # Skip hidden dirs, venvs, and our own generated files
             parts = path.relative_to(directory).parts
             if any(p in skip_dirs or p.startswith(".") for p in parts[:-1]):
                 continue
