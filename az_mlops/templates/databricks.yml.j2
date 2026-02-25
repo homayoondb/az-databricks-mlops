@@ -4,7 +4,7 @@ bundle:
 variables:
   experiment_name:
     description: MLflow experiment path for model training.
-    default: /Users/${workspace.current_user.userName}/${bundle.target}-{{ project_name }}-experiment
+    default: /az-databricks-mlabs/${bundle.target}-{{ project_name }}-experiment
 
   model_name:
     description: Registered model name in Unity Catalog.

@@ -1,7 +1,7 @@
 # Databricks notebook source
 """MLOps training wrapper.
 
-Wraps your existing training script ({{ training_notebook }}) with
+Wraps your existing training script (notebooks/train_model_v3_FINAL.py) with
 automatic MLflow tracking and Unity Catalog model registration.
 Your training code does NOT need any modifications.
 
@@ -38,22 +38,11 @@ mlflow.autolog(log_models=True)
 
 # COMMAND ----------
 
-# 2. Resolve the project root from this notebook's workspace path.
-#    In Databricks, notebookPath() returns the workspace path without extension,
-#    e.g. /Users/.../.bundle/project/dev/files/mlops/run_training
-#    We prefix /Workspace to get the real filesystem path, then go two levels
-#    up (mlops/ → project root) to find the user's training script.
-context = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-notebook_workspace_path = context.notebookPath().get()
-project_root = Path("/Workspace" + notebook_workspace_path).parent.parent
-script_path = project_root / "{{ training_notebook }}"
-print(f"Loading training script from: {script_path}")
-
-# COMMAND ----------
-
-# 3. Run user's training script inside an MLflow run.
-#    autolog captures the model, metrics, and parameters automatically.
+# 2. Run user's training script inside an MLflow run
+#    autolog captures the model, metrics, and parameters automatically
 with mlflow.start_run() as run:
+    # Load and execute the user's training script
+    script_path = Path("../notebooks/train_model_v3_FINAL.py")
     spec = importlib.util.spec_from_file_location("user_training", script_path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["user_training"] = module
@@ -64,7 +53,7 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
-# 4. Register the model in Unity Catalog
+# 3. Register the model in Unity Catalog
 client = MlflowClient()
 
 # Find the model artifact logged by autolog
@@ -81,6 +70,6 @@ print(f"Registered model: {model_name} version {mv.version}")
 
 # COMMAND ----------
 
-# 5. Set "challenger" alias so validation can evaluate it
+# 4. Set "challenger" alias so validation can evaluate it
 client.set_registered_model_alias(model_name, "challenger", mv.version)
 print(f"Set 'challenger' alias on version {mv.version}")
