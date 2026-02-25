@@ -171,7 +171,13 @@ def init(
     for path in created:
         click.echo(f"  Created {path.relative_to(cwd)}")
     click.echo()
-    _run_bundle_validate(cwd)
+    valid = _run_bundle_validate(cwd)
+
+    if valid:
+        click.echo()
+        if click.confirm("  Run the training job now?", default=False):
+            ctx = click.get_current_context()
+            ctx.invoke(run)
 
 
 @cli.command()
@@ -387,8 +393,8 @@ def add_dqx(overwrite: bool) -> None:
     click.echo("  - ./resources/dqx-job.yml")
 
 
-def _run_bundle_validate(directory: Path) -> None:
-    """Run `databricks bundle validate` and print the result."""
+def _run_bundle_validate(directory: Path) -> bool:
+    """Run `databricks bundle validate`. Returns True if valid."""
     click.echo("Running `databricks bundle validate`...")
     result = subprocess.run(
         ["databricks", "bundle", "validate"],
@@ -398,11 +404,11 @@ def _run_bundle_validate(directory: Path) -> None:
     )
     if result.returncode == 0:
         click.echo("  Bundle is valid.")
-        click.echo()
-        click.echo("Next: run `az-mlops run` to deploy and start your first training job.")
+        return True
     else:
         click.echo("  Validation failed — fix the errors above before deploying.")
         click.echo(result.stdout or result.stderr)
+        return False
 
 
 def _extract_config_value(text: str, variable: str) -> str:

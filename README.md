@@ -63,19 +63,32 @@ Running `databricks bundle validate`...
 Next: run `az-mlops run` to deploy and start your first training job.
 ```
 
-### Step 2 — `az-mlops run`
+### Step 2 — run the training job
 
-Deploy the bundle to Databricks and start the training job:
+At the end of `az-mlops init`, you'll be asked:
 
 ```
-$ az-mlops run
+  Run the training job now? [y/N]:
+```
 
-Deploying bundle to target 'dev'...
-  Deployed.
-Starting training job...
+Press `y` to deploy and start immediately, or press Enter to skip and run later.
 
-Training job started.
+To run later, either use the convenience command:
 
+```bash
+az-mlops run
+```
+
+Or run the standard Databricks commands directly (same thing under the hood):
+
+```bash
+databricks bundle deploy -t dev
+databricks bundle run model_training_job -t dev
+```
+
+Both print the same output:
+
+```
   Job run:    https://xxx.cloud.databricks.com/jobs/123456/runs/789
   Experiment: https://xxx.cloud.databricks.com/#mlflow/experiments?searchFilter=...
 ```
