@@ -297,37 +297,34 @@ def run(target: str) -> None:
         or _extract_yaml_host(databricks_yml.read_text(), "staging")
     )
 
-    # 1. Deploy
+    # 1. Deploy — stream output directly so user sees progress live
     click.echo(f"Deploying bundle to target '{target}'...")
     deploy = subprocess.run(
         ["databricks", "bundle", "deploy", "-t", target],
         cwd=cwd,
-        capture_output=True,
-        text=True,
     )
     if deploy.returncode != 0:
-        raise click.ClickException(f"Deploy failed:\n{deploy.stderr or deploy.stdout}")
-    click.echo("  Deployed.")
+        raise click.ClickException("Deploy failed (see output above).")
 
-    # 2. Start training job (no-wait so we get the URL immediately)
+    # 2. Start training job — capture output to extract the run URL
     click.echo("Starting training job...")
     run_proc = subprocess.run(
-        ["databricks", "bundle", "run", "model_training_job", "-t", target, "--no-wait", "--output", "json"],
+        ["databricks", "bundle", "run", "model_training_job", "-t", target, "--no-wait"],
         cwd=cwd,
         capture_output=True,
         text=True,
     )
     if run_proc.returncode != 0:
-        raise click.ClickException(f"Run failed:\n{run_proc.stderr or run_proc.stdout}")
+        click.echo(run_proc.stderr or run_proc.stdout)
+        raise click.ClickException("Failed to start training job (see output above).")
 
+    # CLI outputs "Run URL: https://..." as plain text
     run_page_url = ""
-    try:
-        run_data = json.loads(run_proc.stdout)
-        run_page_url = run_data.get("run_page_url", "")
-    except (json.JSONDecodeError, AttributeError):
-        pass
+    match = re.search(r"Run URL:\s*(https?://\S+)", run_proc.stdout + run_proc.stderr)
+    if match:
+        run_page_url = match.group(1)
 
-    # 3. Get current user to construct the experiment URL
+    # 3. Get current user to build the experiment URL
     experiment_url = ""
     try:
         me = subprocess.run(
@@ -339,7 +336,10 @@ def run(target: str) -> None:
         user_name = json.loads(me.stdout).get("userName", "")
         if user_name and workspace_url:
             experiment_name = f"{target}-{project_name}-experiment"
-            experiment_url = f"{workspace_url}/#mlflow/experiments?searchFilter=name+like+%27%25{experiment_name}%25%27"
+            experiment_url = (
+                f"{workspace_url}/#mlflow/experiments"
+                f"?searchFilter=name+like+%27%25{experiment_name}%25%27"
+            )
     except Exception:
         pass
 

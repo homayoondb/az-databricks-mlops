@@ -10,6 +10,10 @@ resources:
             spark_version: 15.3.x-cpu-ml-scala2.12
             node_type_id: m5.xlarge
             data_security_mode: SINGLE_USER
+            aws_attributes:
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 100
           notebook_task:
             notebook_path: ../mlops/run_inference.py
             base_parameters:
