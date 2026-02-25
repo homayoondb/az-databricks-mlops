@@ -33,7 +33,6 @@ def _prompt_notebook(label: str, directory: Path, default: str) -> str:
             f"  {label} (number or path)",
             default=default,
         )
-        # If they typed a number, resolve it
         try:
             idx = int(choice)
             if 1 <= idx <= len(notebooks):
@@ -60,8 +59,10 @@ def _prompt_notebook(label: str, directory: Path, default: str) -> str:
 )
 @click.option(
     "--prod-url",
-    prompt="Prod workspace URL",
-    help="Databricks production workspace URL.",
+    default="",
+    prompt="Prod workspace URL (enter to skip)",
+    prompt_required=False,
+    help="Databricks production workspace URL. Optional.",
 )
 @click.option(
     "--training-notebook",
@@ -93,7 +94,6 @@ def init(
     """Add MLOps scaffolding to an existing project."""
     cwd = Path.cwd()
 
-    # Prompt for training notebook if not provided
     if training_notebook is None:
         training_notebook = _prompt_notebook(
             "Training notebook/script",
@@ -101,7 +101,6 @@ def init(
             default="training/notebooks/Train.py",
         )
 
-    # Prompt for inference notebook if not skipped and not provided
     with_inference = not skip_inference
     if with_inference and inference_notebook is None:
         include = click.confirm("  Include batch inference job?", default=True)
@@ -117,7 +116,7 @@ def init(
     config = ProjectConfig(
         project_name=project_name,
         staging_workspace_url=staging_url.rstrip("/"),
-        prod_workspace_url=prod_url.rstrip("/"),
+        prod_workspace_url=prod_url.strip().rstrip("/") if prod_url else "",
         training_notebook=training_notebook,
         with_inference=with_inference,
         inference_notebook=inference_notebook or "",
@@ -142,8 +141,10 @@ def init(
 )
 @click.option(
     "--prod-url",
-    prompt="Prod workspace URL",
-    help="Databricks production workspace URL.",
+    default="",
+    prompt="Prod workspace URL (enter to skip)",
+    prompt_required=False,
+    help="Databricks production workspace URL. Optional.",
 )
 @click.option(
     "--skip-inference",
@@ -168,7 +169,7 @@ def new(
     config = ProjectConfig(
         project_name=project_name,
         staging_workspace_url=staging_url.rstrip("/"),
-        prod_workspace_url=prod_url.rstrip("/"),
+        prod_workspace_url=prod_url.strip().rstrip("/") if prod_url else "",
         with_inference=not skip_inference,
         with_dqx=with_dqx,
     )
@@ -249,6 +250,4 @@ def _extract_yaml_host(text: str, target: str) -> str:
     try:
         return bundle["targets"][target]["workspace"]["host"]
     except (KeyError, TypeError):
-        raise click.ClickException(
-            f"Could not find targets.{target}.workspace.host in databricks.yml"
-        )
+        return ""

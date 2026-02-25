@@ -1,26 +1,21 @@
 bundle:
-  name: {{ project_name }}
+  name: messy-ml-project
 
 variables:
   experiment_name:
     description: MLflow experiment path for model training.
-    default: /Users/${workspace.current_user.userName}/${bundle.target}-{{ project_name }}-experiment
+    default: /Users/${workspace.current_user.userName}/${bundle.target}-messy-ml-project-experiment
 
   model_name:
     description: Registered model name in Unity Catalog.
-    default: {{ project_name }}
+    default: messy-ml-project
 
   catalog_name:
     description: Unity Catalog catalog name (maps to environment).
 
 include:
   - ./resources/training-job.yml
-{%- if with_inference %}
   - ./resources/inference-job.yml
-{%- endif %}
-{%- if with_dqx %}
-  - ./resources/dqx-job.yml
-{%- endif %}
 
 targets:
   dev:
@@ -29,17 +24,16 @@ targets:
     variables:
       catalog_name: dev
     workspace:
-      host: {{ staging_workspace_url }}
+      host: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
 
   staging:
     variables:
       catalog_name: staging
     workspace:
-      host: {{ staging_workspace_url }}
-{% if prod_workspace_url %}
+      host: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
+
   prod:
     variables:
       catalog_name: prod
     workspace:
-      host: {{ prod_workspace_url }}
-{%- endif %}
+      host: https://az-commercial-us-lakehouse-dev.cloud.databricks.com

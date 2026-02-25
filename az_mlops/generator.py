@@ -39,7 +39,7 @@ class ProjectConfig:
 
     project_name: str
     staging_workspace_url: str
-    prod_workspace_url: str
+    prod_workspace_url: str = ""
     training_notebook: str = "training/notebooks/Train.py"
     with_inference: bool = True
     inference_notebook: str = "deployment/batch_inference/notebooks/BatchInference.py"

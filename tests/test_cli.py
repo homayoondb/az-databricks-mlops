@@ -96,6 +96,27 @@ def test_new_skip_inference(runner, tmp_path):
     assert not (project_dir / "resources" / "inference-job.yml").exists()
 
 
+def test_new_without_prod_url(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "new",
+            "staging_only",
+            "--staging-url",
+            "https://staging.cloud.databricks.com",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    project_dir = tmp_path / "staging_only"
+    assert (project_dir / "databricks.yml").exists()
+
+    content = (project_dir / "databricks.yml").read_text()
+    assert "staging" in content
+    assert "prod" not in content
+
+
 def test_new_fails_if_dir_exists(runner, tmp_path):
     os.chdir(tmp_path)
     (tmp_path / "existing_project").mkdir()

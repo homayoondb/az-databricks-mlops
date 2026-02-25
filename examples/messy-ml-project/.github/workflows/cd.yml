@@ -3,9 +3,7 @@ name: "CD: Deploy"
 on:
   push:
     branches: [main]
-{%- if prod_workspace_url %}
     tags: ["v*"]
-{%- endif %}
   workflow_dispatch:
     inputs:
       target:
@@ -15,15 +13,13 @@ on:
         type: choice
         options:
           - staging
-{%- if prod_workspace_url %}
           - prod
-{%- endif %}
 
 jobs:
   deploy-staging:
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
     runs-on: ubuntu-latest
-    concurrency: {{ project_name }}-staging-deploy
+    concurrency: messy-ml-project-staging-deploy
     environment: staging
 
     steps:
@@ -34,17 +30,17 @@ jobs:
       - name: Validate bundle
         run: databricks bundle validate -t staging
         env:
-          DATABRICKS_TOKEN: ${{ "{{" }} secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
+          DATABRICKS_TOKEN: ${{ secrets.STAGING_WORKSPACE_TOKEN }}
 
       - name: Deploy to staging
         run: databricks bundle deploy -t staging
         env:
-          DATABRICKS_TOKEN: ${{ "{{" }} secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
-{% if prod_workspace_url %}
+          DATABRICKS_TOKEN: ${{ secrets.STAGING_WORKSPACE_TOKEN }}
+
   deploy-prod:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
     runs-on: ubuntu-latest
-    concurrency: {{ project_name }}-prod-deploy
+    concurrency: messy-ml-project-prod-deploy
     environment: prod
 
     steps:
@@ -55,10 +51,9 @@ jobs:
       - name: Validate bundle
         run: databricks bundle validate -t prod
         env:
-          DATABRICKS_TOKEN: ${{ "{{" }} secrets.PROD_WORKSPACE_TOKEN {{ "}}" }}
+          DATABRICKS_TOKEN: ${{ secrets.PROD_WORKSPACE_TOKEN }}
 
       - name: Deploy to prod
         run: databricks bundle deploy -t prod
         env:
-          DATABRICKS_TOKEN: ${{ "{{" }} secrets.PROD_WORKSPACE_TOKEN {{ "}}" }}
-{%- endif %}
+          DATABRICKS_TOKEN: ${{ secrets.PROD_WORKSPACE_TOKEN }}

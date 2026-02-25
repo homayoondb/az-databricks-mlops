@@ -169,6 +169,27 @@ def test_cd_workflow_has_both_targets(config):
     assert "PROD_WORKSPACE_TOKEN" in content
 
 
+def test_no_prod_target_when_url_empty():
+    config = ProjectConfig(
+        project_name="test_project",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        training_notebook="train.py",
+    )
+    rendered = render_templates(config)
+
+    bundle = yaml.safe_load(rendered["databricks.yml"])
+    assert "staging" in bundle["targets"]
+    assert "prod" not in bundle["targets"]
+
+    cd = rendered[".github/workflows/cd.yml"]
+    assert "deploy-staging" in cd
+    assert "deploy-prod" not in cd
+
+    ci = rendered[".github/workflows/ci.yml"]
+    assert "staging" in ci
+    assert "PROD_WORKSPACE_TOKEN" not in ci
+
+
 def test_deploy_py_has_promotion_logic(config):
     rendered = render_templates(config)
     content = rendered["mlops/deploy.py"]

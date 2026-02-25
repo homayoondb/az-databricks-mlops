@@ -6,26 +6,24 @@ on:
   workflow_dispatch:
 
 env:
-  DATABRICKS_TOKEN: ${{ "{{" }} secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
-  DATABRICKS_HOST: {{ staging_workspace_url }}
+  DATABRICKS_TOKEN: ${{ secrets.STAGING_WORKSPACE_TOKEN }}
+  DATABRICKS_HOST: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [staging{{ ", prod" if prod_workspace_url else "" }}]
+        target: [staging, prod]
     steps:
       - uses: actions/checkout@v4
 
       - uses: databricks/setup-cli@main
 
-      - name: Validate bundle (${{ "{{" }} matrix.target {{ "}}" }})
-        run: databricks bundle validate -t ${{ "{{" }} matrix.target {{ "}}" }}
-{%- if prod_workspace_url %}
+      - name: Validate bundle (${{ matrix.target }})
+        run: databricks bundle validate -t ${{ matrix.target }}
         env:
-          DATABRICKS_TOKEN: ${{ "{{" }} matrix.target == 'prod' && secrets.PROD_WORKSPACE_TOKEN || secrets.STAGING_WORKSPACE_TOKEN {{ "}}" }}
-{%- endif %}
+          DATABRICKS_TOKEN: ${{ matrix.target == 'prod' && secrets.PROD_WORKSPACE_TOKEN || secrets.STAGING_WORKSPACE_TOKEN }}
 
   test:
     runs-on: ubuntu-latest
