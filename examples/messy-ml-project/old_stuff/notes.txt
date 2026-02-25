@@ -1,0 +1,6 @@
+meeting notes dec 2024
+- sarah says we need to deploy this "properly"
+- manager wants it running weekly on new listings
+- ahmed left the company so im the only one who knows how this works
+- need to figure out mlops or whatever its called
+- tried mlops-stacks but gave up after the 15th prompt asking about azure devops

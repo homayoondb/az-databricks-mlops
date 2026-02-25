@@ -146,6 +146,23 @@ az-mlops add dqx
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.
 
+## Try it on a real (messy) project
+
+The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files. Run the demo to see `az-mlops` add MLOps to it without touching a single existing file:
+
+```bash
+bash examples/demo.sh
+```
+
+Or do it manually:
+
+```bash
+cd examples/messy-ml-project
+python notebooks/train_model_v3_FINAL.py   # verify it works
+az-mlops init                               # add MLOps
+cat GETTING_STARTED.md                      # see what to do next
+```
+
 ## DQX integration (optional)
 
 DQX data quality checks are opt-in, either at init time or later:
