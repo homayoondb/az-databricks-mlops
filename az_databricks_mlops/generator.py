@@ -111,13 +111,17 @@ def write_files(
 def find_notebooks(directory: Path) -> list[str]:
     """Find Python and Jupyter notebook files that look like training scripts."""
     patterns = ["**/*.py", "**/*.ipynb"]
-    skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "mlops", "notebooks"}
+    skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "mlops"}
+    # Generated adm file names that should not appear as training script options
+    skip_names = {"run_pipeline.py", "run_training.py", "run_validation.py", "run_deploy.py", "run_inference.py"}
     results: list[str] = []
 
     for pattern in patterns:
         for path in directory.glob(pattern):
             parts = path.relative_to(directory).parts
             if any(p in skip_dirs or p.startswith(".") for p in parts[:-1]):
+                continue
+            if path.name in skip_names:
                 continue
             results.append(str(path.relative_to(directory)))
 

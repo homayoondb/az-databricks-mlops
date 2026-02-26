@@ -218,6 +218,7 @@ def test_find_notebooks(tmp_path):
     (tmp_path / "train.py").write_text("# training")
     (tmp_path / "notebooks").mkdir()
     (tmp_path / "notebooks" / "explore.ipynb").write_text("{}")
+    (tmp_path / "notebooks" / "run_pipeline.py").write_text("# generated")
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "hooks.py").write_text("")
     (tmp_path / "__pycache__").mkdir()
@@ -226,8 +227,10 @@ def test_find_notebooks(tmp_path):
     results = find_notebooks(tmp_path)
 
     assert "train.py" in results
-    # notebooks/ is now in skip_dirs (contains generated run_pipeline.py)
-    assert not any("notebooks" in r for r in results)
+    # notebooks/ content is included (except generated adm filenames)
+    assert "notebooks/explore.ipynb" in results
+    # Generated adm filenames are excluded even inside notebooks/
+    assert "notebooks/run_pipeline.py" not in results
     # Should not include hidden dirs or pycache
     assert not any(".git" in r for r in results)
     assert not any("__pycache__" in r for r in results)
