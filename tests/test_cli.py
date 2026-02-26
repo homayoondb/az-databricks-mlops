@@ -5,7 +5,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from az_databricks_mlops.cli import cli
+from az_databricks_mlops.cli import _resolve_profile_for_host, cli
 
 
 @pytest.fixture
@@ -310,3 +310,33 @@ def test_clean_preserves_user_files(runner, tmp_path):
     assert (tmp_path / "data" / "input.csv").exists()
     # Generated files gone
     assert not (tmp_path / "databricks.yml").exists()
+
+
+def test_resolve_profile_for_host_matches(tmp_path, monkeypatch):
+    cfg = tmp_path / ".databrickscfg"
+    cfg.write_text(
+        "[az-dev]\nhost = https://adb-123.azuredatabricks.net\ntoken = dapi123\n\n"
+        "[prod]\nhost = https://adb-456.azuredatabricks.net\ntoken = dapi456\n"
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert _resolve_profile_for_host("https://adb-123.azuredatabricks.net") == "az-dev"
+    assert _resolve_profile_for_host("https://adb-456.azuredatabricks.net") == "prod"
+
+
+def test_resolve_profile_for_host_trailing_slash(tmp_path, monkeypatch):
+    cfg = tmp_path / ".databrickscfg"
+    cfg.write_text("[myprofile]\nhost = https://adb-123.azuredatabricks.net/\ntoken = dapi123\n")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert _resolve_profile_for_host("https://adb-123.azuredatabricks.net") == "myprofile"
+
+
+def test_resolve_profile_for_host_no_match(tmp_path, monkeypatch):
+    cfg = tmp_path / ".databrickscfg"
+    cfg.write_text("[other]\nhost = https://adb-999.azuredatabricks.net\ntoken = dapi999\n")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert _resolve_profile_for_host("https://adb-123.azuredatabricks.net") == ""
+
+
+def test_resolve_profile_for_host_missing_cfg(tmp_path, monkeypatch):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert _resolve_profile_for_host("https://adb-123.azuredatabricks.net") == ""

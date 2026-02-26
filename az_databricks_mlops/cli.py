@@ -10,6 +10,8 @@ from pathlib import Path
 
 import click
 import yaml
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.errors import ResourceAlreadyExists, ResourceDoesNotExist
 
 from az_databricks_mlops.generator import (
     CORE_TEMPLATES,
@@ -385,8 +387,8 @@ def run(target: str) -> None:
     if match:
         run_page_url = match.group(1)
 
-    # 3. Ensure MLflow experiment exists and get its direct URL.
-    #    We create it here (idempotent) so the ID is available before the job runs.
+    # 3. Get or create the MLflow experiment to obtain its direct URL.
+    #    Using the SDK (already a dep) instead of subprocess — avoids CLI output-format issues.
     experiment_url = ""
     try:
         experiment_name_template = (
@@ -395,46 +397,30 @@ def run(target: str) -> None:
             .get("default", "")
         )
         experiment_name = experiment_name_template.replace("${bundle.target}", target)
+
         if experiment_name and workspace_url:
-            encoded = urllib.parse.quote(experiment_name, safe="")
+            # Resolve the profile that the Databricks CLI would use for this host,
+            # so the SDK authenticates the same way (PAT from ~/.databrickscfg).
+            profile = _resolve_profile_for_host(workspace_url)
+            w = WorkspaceClient(host=workspace_url, profile=profile or None)
             experiment_id = None
 
-            # Try to fetch existing experiment first
-            get_result = subprocess.run(
-                ["databricks", "api", "get", f"/api/2.0/mlflow/experiments/get-by-name?experiment_name={encoded}"],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-            )
-            if get_result.returncode == 0:
-                experiment_id = json.loads(get_result.stdout).get("experiment", {}).get("experiment_id")
-
-            # Experiment doesn't exist yet — create it so we have the ID immediately
-            if not experiment_id:
-                create_result = subprocess.run(
-                    ["databricks", "api", "post", "/api/2.0/mlflow/experiments/create",
-                     "--json", json.dumps({"name": experiment_name})],
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                )
-                if create_result.returncode == 0:
-                    experiment_id = json.loads(create_result.stdout).get("experiment_id")
-                else:
-                    # Race: created between our get and create — fetch again
-                    get_result2 = subprocess.run(
-                        ["databricks", "api", "get", f"/api/2.0/mlflow/experiments/get-by-name?experiment_name={encoded}"],
-                        cwd=cwd,
-                        capture_output=True,
-                        text=True,
-                    )
-                    if get_result2.returncode == 0:
-                        experiment_id = json.loads(get_result2.stdout).get("experiment", {}).get("experiment_id")
+            try:
+                resp = w.experiments.get_by_name(experiment_name=experiment_name)
+                experiment_id = resp.experiment.experiment_id
+            except ResourceDoesNotExist:
+                try:
+                    resp = w.experiments.create_experiment(name=experiment_name)
+                    experiment_id = resp.experiment_id
+                except ResourceAlreadyExists:
+                    # Race: created between our get and create
+                    resp = w.experiments.get_by_name(experiment_name=experiment_name)
+                    experiment_id = resp.experiment.experiment_id
 
             if experiment_id:
                 experiment_url = f"{workspace_url}/ml/experiments/{experiment_id}"
-    except Exception:
-        pass
+    except Exception as e:
+        click.echo(f"  (Could not resolve experiment URL: {e})", err=True)
 
     click.echo()
     click.echo("Training job started.")
@@ -559,6 +545,25 @@ def _extract_config_value(text: str, variable: str) -> str:
     raise click.ClickException(
         f"Could not find {variable} in mlops/config.py"
     )
+
+
+def _resolve_profile_for_host(host: str) -> str:
+    """Return the ~/.databrickscfg profile name whose host matches the given URL, or ''."""
+    try:
+        import configparser
+        cfg_path = Path.home() / ".databrickscfg"
+        if not cfg_path.exists():
+            return ""
+        parser = configparser.ConfigParser()
+        parser.read(cfg_path)
+        host_norm = host.rstrip("/").lower()
+        for section in parser.sections():
+            cfg_host = parser.get(section, "host", fallback="").rstrip("/").lower()
+            if cfg_host == host_norm:
+                return section
+    except Exception:
+        pass
+    return ""
 
 
 def _extract_yaml_host(text: str, target: str) -> str:
