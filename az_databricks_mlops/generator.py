@@ -19,6 +19,7 @@ CORE_TEMPLATES: list[str] = [
     "mlops/run_validation.py.j2",
     "mlops/deploy.py.j2",
     "mlops/run_deploy.py.j2",
+    "notebooks/run_pipeline.py.j2",
 ]
 
 INFERENCE_TEMPLATES: list[str] = [
@@ -57,7 +58,7 @@ def _output_path(template_name: str) -> str:
 def render_templates(config: ProjectConfig) -> dict[str, str]:
     """Render all templates and return {relative_path: content}."""
     env = Environment(
-        loader=PackageLoader("az_mlops", "templates"),
+        loader=PackageLoader("az_databricks_mlops", "templates"),
         autoescape=select_autoescape([]),
         keep_trailing_newline=True,
     )
@@ -110,7 +111,7 @@ def write_files(
 def find_notebooks(directory: Path) -> list[str]:
     """Find Python and Jupyter notebook files that look like training scripts."""
     patterns = ["**/*.py", "**/*.ipynb"]
-    skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "mlops"}
+    skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "mlops", "notebooks"}
     results: list[str] = []
 
     for pattern in patterns:

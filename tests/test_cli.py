@@ -5,7 +5,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from az_mlops.cli import cli
+from az_databricks_mlops.cli import cli
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def runner():
 def test_version(runner):
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.1.0" in result.output
+    assert "0.2.0" in result.output
 
 
 def test_new_creates_project(runner, tmp_path):

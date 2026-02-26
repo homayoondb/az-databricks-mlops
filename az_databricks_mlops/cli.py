@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 import click
 import yaml
 
-from az_mlops.generator import (
+from az_databricks_mlops.generator import (
     CORE_TEMPLATES,
     DQX_TEMPLATES,
     INFERENCE_TEMPLATES,
@@ -317,7 +318,7 @@ def clean() -> None:
             removed.append(rel_path)
 
     # Clean up empty directories left behind
-    for dir_name in ["mlops", "resources"]:
+    for dir_name in ["mlops", "resources", "notebooks"]:
         d = cwd / dir_name
         if d.exists() and not any(d.iterdir()):
             d.rmdir()
@@ -384,22 +385,54 @@ def run(target: str) -> None:
     if match:
         run_page_url = match.group(1)
 
-    # 3. Get current user to build the experiment URL
+    # 3. Ensure MLflow experiment exists and get its direct URL.
+    #    We create it here (idempotent) so the ID is available before the job runs.
     experiment_url = ""
     try:
-        me = subprocess.run(
-            ["databricks", "current-user", "me", "--output", "json"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
+        experiment_name_template = (
+            bundle.get("variables", {})
+            .get("experiment_name", {})
+            .get("default", "")
         )
-        user_name = json.loads(me.stdout).get("userName", "")
-        if user_name and workspace_url:
-            experiment_name = f"{target}-{project_name}-experiment"
-            experiment_url = (
-                f"{workspace_url}/#mlflow/experiments"
-                f"?searchFilter=name+like+%27%25{experiment_name}%25%27"
+        experiment_name = experiment_name_template.replace("${bundle.target}", target)
+        if experiment_name and workspace_url:
+            encoded = urllib.parse.quote(experiment_name, safe="")
+            experiment_id = None
+
+            # Try to fetch existing experiment first
+            get_result = subprocess.run(
+                ["databricks", "api", "get", f"/api/2.0/mlflow/experiments/get-by-name?experiment_name={encoded}"],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
             )
+            if get_result.returncode == 0:
+                experiment_id = json.loads(get_result.stdout).get("experiment", {}).get("experiment_id")
+
+            # Experiment doesn't exist yet — create it so we have the ID immediately
+            if not experiment_id:
+                create_result = subprocess.run(
+                    ["databricks", "api", "post", "/api/2.0/mlflow/experiments/create",
+                     "--json", json.dumps({"name": experiment_name})],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                )
+                if create_result.returncode == 0:
+                    experiment_id = json.loads(create_result.stdout).get("experiment_id")
+                else:
+                    # Race: created between our get and create — fetch again
+                    get_result2 = subprocess.run(
+                        ["databricks", "api", "get", f"/api/2.0/mlflow/experiments/get-by-name?experiment_name={encoded}"],
+                        cwd=cwd,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if get_result2.returncode == 0:
+                        experiment_id = json.loads(get_result2.stdout).get("experiment", {}).get("experiment_id")
+
+            if experiment_id:
+                experiment_url = f"{workspace_url}/ml/experiments/{experiment_id}"
     except Exception:
         pass
 
@@ -410,12 +443,46 @@ def run(target: str) -> None:
         click.echo(f"  Job run:    {run_page_url}")
     if experiment_url:
         click.echo(f"  Experiment: {experiment_url}")
-    elif workspace_url:
-        click.echo(f"  Experiment: {workspace_url}/#mlflow/experiments")
-        click.echo(f"              (search for '{target}-{project_name}-experiment')")
     click.echo()
     click.echo("The job runs Train → Validate → Deploy in sequence.")
     click.echo("Once complete, the model will be registered in Unity Catalog with the 'champion' alias.")
+    click.echo()
+    click.echo("  Tip: To retrigger from a notebook (no CLI needed):")
+    click.echo("    from az_databricks_mlops import run_training_job")
+    click.echo(f'    run_training_job("{target}-{project_name}-model-training-job")')
+    click.echo()
+    click.echo("  No local terminal? Use the Databricks Web Terminal (DBR 15.1+) in the browser UI.")
+
+
+@cli.command()
+@click.option(
+    "--target",
+    default="dev",
+    show_default=True,
+    help="Bundle target (dev/staging/prod) — used to construct the job name prefix.",
+)
+def trigger(target: str) -> None:
+    """Trigger the deployed training job via the Databricks SDK (no CLI required)."""
+    cwd = Path.cwd()
+
+    databricks_yml = cwd / "databricks.yml"
+    if not databricks_yml.exists():
+        raise click.ClickException("No databricks.yml found. Run `adm init` first.")
+
+    bundle = yaml.safe_load(databricks_yml.read_text())
+    project_name = bundle.get("bundle", {}).get("name", cwd.name)
+    job_name = f"{target}-{project_name}-model-training-job"
+
+    click.echo(f"Triggering job: {job_name}")
+    try:
+        from az_databricks_mlops.trigger import run_training_job
+
+        run_training_job(job_name)
+    except ImportError:
+        raise click.ClickException(
+            "databricks-sdk is required for `adm trigger`. "
+            "Install it: pip install 'az-databricks-mlops[sdk]'"
+        )
 
 
 @cli.group()

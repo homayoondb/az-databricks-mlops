@@ -26,10 +26,12 @@ from mlflow import MlflowClient
 dbutils.widgets.text("experiment_name", "")
 dbutils.widgets.text("model_name", "")
 dbutils.widgets.text("env", "dev")
+dbutils.widgets.text("dataset_table", "")  # optional: UC table used for training (e.g. catalog.schema.features)
 
 experiment_name = dbutils.widgets.get("experiment_name")
 model_name = dbutils.widgets.get("model_name")
 env = dbutils.widgets.get("env")
+dataset_table = dbutils.widgets.get("dataset_table")
 
 # COMMAND ----------
 
@@ -59,6 +61,17 @@ os.chdir(project_root)
 # 3. Run user's training script inside an MLflow run.
 #    autolog captures the model, metrics, and parameters automatically.
 with mlflow.start_run() as run:
+    # 3a. Log dataset lineage for Unity Catalog (requires MLflow 2.11+, DBR 15.3+).
+    #     If dataset_table is set, UC will draw a lineage graph: table → run → model.
+    if dataset_table:
+        try:
+            dataset = mlflow.data.load_delta(table_name=dataset_table)
+            mlflow.log_input(dataset, context="training")
+            mlflow.log_metric("dataset_row_count", spark.table(dataset_table).count())
+            print(f"Logged dataset lineage: {dataset_table}")
+        except Exception as e:
+            print(f"Warning: Could not log dataset lineage: {e}")
+
     spec = importlib.util.spec_from_file_location("user_training", script_path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["user_training"] = module

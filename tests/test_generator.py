@@ -3,7 +3,7 @@
 import yaml
 import pytest
 
-from az_mlops.generator import ProjectConfig, find_notebooks, render_templates
+from az_databricks_mlops.generator import ProjectConfig, find_notebooks, render_templates
 
 
 @pytest.fixture
@@ -54,6 +54,7 @@ def test_core_templates_rendered(config):
         "mlops/deploy.py",
         "mlops/run_deploy.py",
         "mlops/run_inference.py",
+        "notebooks/run_pipeline.py",
     ]
     for f in expected_files:
         assert f in rendered, f"Missing: {f}"
@@ -225,7 +226,44 @@ def test_find_notebooks(tmp_path):
     results = find_notebooks(tmp_path)
 
     assert "train.py" in results
-    assert "notebooks/explore.ipynb" in results
+    # notebooks/ is now in skip_dirs (contains generated run_pipeline.py)
+    assert not any("notebooks" in r for r in results)
     # Should not include hidden dirs or pycache
     assert not any(".git" in r for r in results)
     assert not any("__pycache__" in r for r in results)
+
+
+def test_run_pipeline_notebook_generated(config):
+    rendered = render_templates(config)
+
+    assert "notebooks/run_pipeline.py" in rendered
+    content = rendered["notebooks/run_pipeline.py"]
+    assert "dbutils.notebook.run" in content
+    assert "run_training" in content
+    assert "run_validation" in content
+    assert "run_deploy" in content
+    assert "dataset_table" in content
+
+
+def test_run_pipeline_contains_project_values(config):
+    rendered = render_templates(config)
+    content = rendered["notebooks/run_pipeline.py"]
+
+    assert "test_project" in content
+
+
+def test_run_training_has_dataset_table_widget(config):
+    rendered = render_templates(config)
+    content = rendered["mlops/run_training.py"]
+
+    assert 'widgets.text("dataset_table"' in content
+    assert "mlflow.log_input" in content
+    assert "load_delta" in content
+    assert "dataset_row_count" in content
+
+
+def test_training_job_has_dataset_table_parameter(config):
+    rendered = render_templates(config)
+    content = rendered["resources/training-job.yml"]
+
+    assert "dataset_table" in content
