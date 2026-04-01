@@ -1,0 +1,14 @@
+"""Single source of truth for project MLOps configuration."""
+
+# -- Model Registry (Unity Catalog) --
+MODEL_NAME = "{{ project_name }}"
+SCHEMA_NAME = "{{ schema_name }}"
+
+# -- MLflow Experiment --
+# In production, the experiment path is set via bundle variables.
+# This default is for local / interactive development.
+EXPERIMENT_BASE_NAME = "{{ project_name }}-experiment"
+
+# -- Inference --
+INPUT_TABLE = "inference_input"
+OUTPUT_TABLE = "predictions"

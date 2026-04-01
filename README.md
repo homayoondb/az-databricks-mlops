@@ -1,6 +1,8 @@
-# az-mlops
+# as-databricks-mlops
 
 Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~10 files — no complex templates, no 20-question wizards, no code changes to your existing scripts.
+
+The published package name is `as-databricks-mlops`. The CLI command is `adm`.
 
 Built for AWS Databricks with Unity Catalog.
 
@@ -8,35 +10,35 @@ Built for AWS Databricks with Unity Catalog.
 
 Most ML teams have working models but no production pipeline. Setting up MLOps from scratch means figuring out Databricks Asset Bundles, model registration, validation, and deployment promotion — all from blank files.
 
-`az-mlops` does it in one command. You point it at your training script, answer 3 prompts, and get a production-ready pipeline. **Your existing training code stays untouched** — the tool wraps it with automatic MLflow tracking, model registration, and validation.
+`as-databricks-mlops` does it in one command. You point it at your training script, answer a few prompts, and get a production-ready pipeline. **Your existing training code stays untouched** — the tool wraps it with automatic MLflow tracking, model registration, and validation.
 
 ## Installation
 
 ```bash
 # Install directly from GitHub (recommended)
-pip install git+https://github.com/<org>/az-mlops.git
+pip install git+https://github.com/<org>/as-databricks-mlops.git
 
 # Or clone and install locally
-git clone https://github.com/<org>/az-mlops.git
-pip install ./az-mlops
+git clone https://github.com/<org>/as-databricks-mlops.git
+pip install ./as-databricks-mlops
 ```
 
 ## The complete flow
 
-Three commands take you from messy ML project to tracked experiment in Databricks:
+Two commands take you from messy ML project to tracked experiment in Databricks:
 
 ```
-az-mlops init    →    az-mlops run    →    open the experiment URL
-  (5 prompts)       (deploy + train)      (MLflow tracking in Databricks)
+adm init    →    adm run    →    open the experiment URL
+ (prompts)     (deploy + train)    (MLflow tracking in Databricks)
 ```
 
-### Step 1 — `az-mlops init`
+### Step 1 — `adm init`
 
 Add MLOps scaffolding to your existing project:
 
 ```
 $ cd my_ml_project
-$ az-mlops init
+$ adm init
 
 Project name [my_ml_project]:
 Staging workspace URL: https://xxx.cloud.databricks.com
@@ -60,12 +62,49 @@ Prod workspace URL (enter to skip):
 Running `databricks bundle validate`...
   Bundle is valid.
 
-Next: run `az-mlops run` to deploy and start your first training job.
+Next: run `adm run` to deploy and start your first training job.
+```
+
+`adm init` now supports three layers of defaults:
+
+1. CLI flags win if you pass them explicitly
+2. `adm.yml` values become the prompt defaults if present
+3. If `adm.yml` leaves a field blank, `adm` falls back to helpful built-in defaults like the current folder name, notebook discovery, and any existing `databricks.yml` values
+
+You still see the interactive prompts in all cases, so you can accept the default with Enter or type a different value on the spot.
+
+### Optional `adm.yml`
+
+If you scaffold multiple projects into the same workspace, keep an `adm.yml` in the repo root and let `adm init` or `adm new` auto-discover it:
+
+```yaml
+# Example defaults for this repo.
+project_name:
+
+databricks:
+  staging_url: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
+  prod_url: ""
+  catalog_name: us_comm_lakehouse_dev
+  schema_name: az_brand_assistant
+
+training:
+  training_notebook:
+  skip_inference: false
+
+options:
+  with_dqx: false
+```
+
+`adm.yml` is optional. If you want a different filename or location, pass it explicitly:
+
+```bash
+adm init --config path/to/adm.yml
+adm new --config path/to/adm.yml
 ```
 
 ### Step 2 — run the training job
 
-At the end of `az-mlops init`, you'll be asked:
+At the end of `adm init`, you'll be asked:
 
 ```
   Run the training job now? [y/N]:
@@ -76,7 +115,7 @@ Press `y` to deploy and start immediately, or press Enter to skip and run later.
 To run later, either use the convenience command:
 
 ```bash
-az-mlops run
+adm run
 ```
 
 Or run the standard Databricks commands directly (same thing under the hood):
@@ -147,10 +186,11 @@ The key insight: `mlops/run_training.py` wraps your existing training script aut
 Your training script doesn't need `import mlflow` or any modifications. The wrapper handles everything.
 
 Similarly, `mlops/run_inference.py` loads the champion model from Unity Catalog and scores your input table — no inference code changes needed.
+If you enable batch inference, `adm` generates that generic wrapper directly; it does not execute an existing `predict.py` from your project.
 
 ## Try it on a real (messy) project
 
-The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files. Run the demo to see `az-mlops` add MLOps to it without touching a single existing file:
+The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files. Run the demo to see `adm` add MLOps to it without touching a single existing file:
 
 ```bash
 bash examples/demo.sh
@@ -161,22 +201,22 @@ Or manually:
 ```bash
 cd examples/messy-ml-project
 python notebooks/train_model_v3_FINAL.py   # verify it works first
-az-mlops init                               # add MLOps (5 prompts)
-az-mlops run                                # deploy + run, get experiment URL
+adm init                                    # add MLOps scaffolding
+adm run                                     # deploy + run, get experiment URL
 ```
 
 ## Commands
 
-### `az-mlops init`
+### `adm init`
 
 Add MLOps scaffolding to the current directory.
 
 ```bash
 # Interactive (discovers your notebooks, prompts for choices)
-az-mlops init
+adm init
 
 # Non-interactive
-az-mlops init \
+adm init \
   --project-name my_project \
   --staging-url https://staging.cloud.databricks.com \
   --training-notebook notebooks/train.py \
@@ -184,43 +224,44 @@ az-mlops init \
 ```
 
 Options:
+- `--config` — path to an `adm.yml` defaults file (auto-discovered if omitted)
 - `--training-notebook` — path to your training script (prompted interactively if omitted)
 - `--skip-inference` — skip batch inference job entirely
 - `--with-dqx` — include DQX data quality checks
 - `--overwrite` — replace existing generated files
 
-### `az-mlops run`
+### `adm run`
 
 Deploy the bundle and start the training job. Prints direct URLs to the job run and MLflow experiment.
 
 ```bash
-az-mlops run              # deploys to dev (default)
-az-mlops run --target staging
+adm run              # deploys to dev (default)
+adm run --target staging
 ```
 
-### `az-mlops clean`
+### `adm clean`
 
-Remove all az-mlops generated files from the current directory — useful for re-running `init` with different settings.
+Remove all generated files from the current directory while keeping your own project files.
 
 ```bash
-az-mlops clean    # removes generated files, keeps your code
-az-mlops init     # start fresh
+adm clean    # removes generated files, keeps your code
+adm init     # start fresh
 ```
 
-### `az-mlops new <name>`
+### `adm new <name>`
 
 Create a new project directory with MLOps scaffolding.
 
 ```bash
-az-mlops new my_project --staging-url https://staging.cloud.databricks.com
+adm new my_project --staging-url https://staging.cloud.databricks.com
 ```
 
-### `az-mlops add dqx`
+### `adm add dqx`
 
-Add DQX data quality checks to an existing `az-mlops` project.
+Add DQX data quality checks to an existing project scaffolded by `adm`.
 
 ```bash
-az-mlops add dqx
+adm add dqx
 ```
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.

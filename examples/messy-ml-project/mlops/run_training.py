@@ -1,7 +1,7 @@
 # Databricks notebook source
 """MLOps training wrapper.
 
-Wraps your existing training script ({{ training_notebook }}) with
+Wraps your existing training script (notebooks/train_model_v3_FINAL.py) with
 automatic MLflow tracking and Unity Catalog model registration.
 Your training code does NOT need any modifications.
 
@@ -17,8 +17,10 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import mlflow
+from databricks.sdk import WorkspaceClient
 from mlflow import MlflowClient
 
 # COMMAND ----------
@@ -32,6 +34,13 @@ experiment_name = dbutils.widgets.get("experiment_name")
 model_name = dbutils.widgets.get("model_name")
 env = dbutils.widgets.get("env")
 dataset_table = dbutils.widgets.get("dataset_table")
+
+# COMMAND ----------
+
+# Ensure the workspace directory exists before MLflow tries to create the experiment.
+parent_dir = str(PurePosixPath(experiment_name).parent)
+if parent_dir and parent_dir != ".":
+    WorkspaceClient().workspace.mkdirs(parent_dir)
 
 # COMMAND ----------
 
@@ -49,7 +58,7 @@ mlflow.autolog(log_models=True)
 context = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
 notebook_workspace_path = context.notebookPath().get()
 project_root = Path("/Workspace" + notebook_workspace_path).parent.parent
-script_path = project_root / "{{ training_notebook }}"
+script_path = project_root / "notebooks/train_model_v3_FINAL.py"
 print(f"Loading training script from: {script_path}")
 
 # Change working directory to project root so relative paths in the

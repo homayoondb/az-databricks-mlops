@@ -3,7 +3,7 @@
 import yaml
 import pytest
 
-from az_databricks_mlops.generator import ProjectConfig, find_notebooks, render_templates
+from as_databricks_mlops.generator import ProjectConfig, find_notebooks, render_templates
 
 
 @pytest.fixture
@@ -85,6 +85,7 @@ def test_databricks_yml_has_correct_values(config):
     bundle = yaml.safe_load(content)
 
     assert bundle["bundle"]["name"] == "test_project"
+    assert bundle["variables"]["experiment_name"]["default"] == "/Shared/az-databricks-mlops/${bundle.target}-test_project-experiment"
     assert bundle["targets"]["staging"]["workspace"]["host"] == "https://staging.cloud.databricks.com"
     assert bundle["targets"]["prod"]["workspace"]["host"] == "https://prod.cloud.databricks.com"
     assert bundle["targets"]["dev"]["mode"] == "development"
@@ -111,6 +112,7 @@ def test_training_job_points_to_wrapper(config):
 
     assert "../mlops/run_training.py" in content
     assert "model-training-job" in content
+    assert "databricks-sdk>=0.20" in content
     # Should NOT reference user's notebook directly in job YAML
     assert "notebooks/train.py" not in content
 
@@ -120,6 +122,8 @@ def test_run_training_references_user_notebook(config):
     content = rendered["mlops/run_training.py"]
 
     assert "notebooks/train.py" in content
+    assert "WorkspaceClient" in content
+    assert "workspace.mkdirs" in content
     assert "mlflow.autolog" in content
     assert "register_model" in content
     assert "challenger" in content
@@ -175,6 +179,20 @@ def test_config_py_has_model_name(config):
     content = rendered["mlops/config.py"]
 
     assert 'MODEL_NAME = "test_project"' in content
+    assert 'SCHEMA_NAME = ""' in content
+
+
+def test_config_py_uses_configured_schema_name():
+    config = ProjectConfig(
+        project_name="test_project",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        training_notebook="train.py",
+        schema_name="az_brand_assistant",
+    )
+    rendered = render_templates(config)
+    content = rendered["mlops/config.py"]
+
+    assert 'SCHEMA_NAME = "az_brand_assistant"' in content
 
 
 def test_validation_py_has_thresholds(config):
@@ -253,6 +271,7 @@ def test_run_pipeline_contains_project_values(config):
     content = rendered["notebooks/run_pipeline.py"]
 
     assert "test_project" in content
+    assert "/Shared/az-databricks-mlops/" in content
 
 
 def test_run_training_has_dataset_table_widget(config):

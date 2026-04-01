@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demo: add MLOps to the messy-ml-project example
-# Run from the az-mlops repo root: bash examples/demo.sh
+# Run from the as-databricks-mlops repo root: bash examples/demo.sh
 
 set -e
 
@@ -21,8 +21,8 @@ echo "=== Step 2: Run the training script (it works!) ==="
 python notebooks/train_model_v3_FINAL.py
 echo ""
 
-echo "=== Step 3: Add MLOps with az-mlops ==="
-az-mlops init \
+echo "=== Step 3: Add MLOps with adm ==="
+adm init \
   --project-name house_prices \
   --staging-url https://staging.cloud.databricks.com \
   --prod-url "" \

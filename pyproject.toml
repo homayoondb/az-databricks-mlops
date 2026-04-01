@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "az-databricks-mlops"
+name = "as-databricks-mlops"
 version = "0.2.0"
 description = "Lightweight MLOps scaffolding for Databricks projects"
 requires-python = ">=3.10"
@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-adm = "az_databricks_mlops.cli:cli"
+adm = "as_databricks_mlops.cli:cli"
+az-mlops = "az_mlops.cli:cli"
 
 [project.optional-dependencies]
 dev = [
@@ -24,7 +25,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["az_databricks_mlops"]
+packages = ["as_databricks_mlops", "az_mlops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

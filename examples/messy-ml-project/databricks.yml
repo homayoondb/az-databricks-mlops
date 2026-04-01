@@ -1,0 +1,45 @@
+bundle:
+  name: messy-ml-project
+
+variables:
+  experiment_name:
+    description: MLflow experiment path for model training.
+    default: /Shared/az-databricks-mlops/${bundle.target}-messy-ml-project-experiment
+
+  schema_name:
+    description: Unity Catalog schema (database) where the model is registered.
+    default: az_brand_assistant
+
+  model_name:
+    description: Registered model name in Unity Catalog.
+    default: messy_ml_project
+
+  catalog_name:
+    description: Unity Catalog catalog name (maps to environment).
+
+sync:
+  include:
+    - "mlops/**"
+    - "**/*.py"
+    - "**/*.ipynb"
+    - "data/**"
+
+include:
+  - ./resources/training-job.yml
+  - ./resources/inference-job.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog_name: us_comm_lakehouse_dev
+    workspace:
+      host: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
+
+  staging:
+    variables:
+      catalog_name: us_comm_lakehouse_dev
+    workspace:
+      host: https://az-commercial-us-lakehouse-dev.cloud.databricks.com
+
