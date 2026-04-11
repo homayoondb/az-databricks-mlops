@@ -404,6 +404,12 @@ def _detect_schema_name(directory: Path) -> str:
     help="Include the optional DQX data quality scaffold.",
 )
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
+@click.option(
+    "--no-validate",
+    is_flag=True,
+    default=False,
+    help="Skip `databricks bundle validate` (useful in notebook environments).",
+)
 def init(
     config_path: Path | None,
     project_name: str | None,
@@ -416,6 +422,7 @@ def init(
     with_inference: bool | None,
     with_dqx: bool | None,
     overwrite: bool,
+    no_validate: bool,
 ) -> None:
     """Add MLOps scaffolding to an existing project."""
     cwd = Path.cwd()
@@ -480,7 +487,11 @@ def init(
     for path in created:
         click.echo(f"  Created {path.relative_to(cwd)}")
     click.echo()
-    valid = _run_bundle_validate(cwd)
+    if no_validate:
+        click.echo("Skipping bundle validation (--no-validate).")
+        valid = True
+    else:
+        valid = _run_bundle_validate(cwd)
 
     if valid:
         click.echo()

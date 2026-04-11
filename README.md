@@ -229,6 +229,7 @@ Options:
 - `--skip-inference` — skip batch inference job entirely
 - `--with-dqx` — include DQX data quality checks
 - `--overwrite` — replace existing generated files
+- `--no-validate` — skip `databricks bundle validate` (useful in notebook environments where the CLI is unavailable)
 
 ### `adm run`
 
@@ -238,6 +239,43 @@ Deploy the bundle and start the training job. Prints direct URLs to the job run 
 adm run              # deploys to dev (default)
 adm run --target staging
 ```
+
+### `adm trigger`
+
+Re-run an already-deployed training job via the Databricks SDK. No bundle redeploy, no CLI required — works from notebooks and automation scripts.
+
+```bash
+adm trigger              # triggers the dev job
+adm trigger --target staging
+```
+
+Options:
+- `--target` — bundle target used to construct the job name (default: `dev`)
+
+### `adm document`
+
+Review a repository and generate a prioritized Markdown improvement document. Respects `.gitignore` rules and automatically skips low-signal artifacts (`mlruns/`, `wandb/`, logs, binary files, build outputs).
+
+```bash
+# Review the current directory
+adm document
+
+# Review a local project
+adm document --source path/to/project
+
+# Review a remote Git repository
+adm document --source https://github.com/org/repo.git
+
+# Specify output path and endpoint
+adm document --source . --output review.md --endpoint databricks-claude-opus-4-6
+```
+
+Options:
+- `--source` — local path or Git URL to review (defaults to current directory)
+- `--output` — path for the generated Markdown document
+- `--endpoint` — specific Databricks Model Serving endpoint (auto-selects the best available if omitted)
+- `--max-file-chars` — max characters per file (default: 120,000)
+- `--max-total-chars` — max total characters across all files (default: 2,400,000)
 
 ### `adm clean`
 
@@ -265,6 +303,36 @@ adm add dqx
 ```
 
 Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init time with `--with-dqx`, the training job automatically depends on the data quality check passing.
+
+## Notebook Usage
+
+Install the package inside a Databricks notebook:
+
+```python
+%pip install git+https://github.com/<org>/as-databricks-mlops.git
+```
+
+**Trigger a training job** (works with ambient workspace credentials):
+
+```python
+from as_databricks_mlops import run_training_job
+
+run_training_job("dev-my-project-model-training-job")
+```
+
+**Generate a repository review**:
+
+```python
+from as_databricks_mlops import review_repository
+
+# Review a repo cloned into the workspace
+artifact = review_repository(
+    source="/tmp/my-repo",
+    output_path="/tmp/review.md",
+)
+```
+
+Not all CLI commands work in notebook environments. `trigger` and `document` work (SDK and git-based). `init`, `run`, and `clean` require the `databricks` CLI which is not available in notebook runtimes.
 
 ## Customization
 

@@ -493,6 +493,26 @@ def test_add_dqx_to_existing_project(runner, tmp_path):
     assert (tmp_path / "mlops" / "dqx_checks.py").exists()
 
 
+def test_init_no_validate_skips_bundle_validate(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--project-name", "noval_project",
+            "--staging-url", "https://staging.cloud.databricks.com",
+            "--catalog-name", "cat",
+            "--schema-name", "sch",
+            "--training-notebook", "train.py",
+            "--skip-inference",
+            "--no-validate",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Skipping bundle validation (--no-validate)" in result.output
+    assert (tmp_path / "databricks.yml").exists()
+
+
 def test_add_dqx_fails_without_init(runner, tmp_path):
     os.chdir(tmp_path)
     result = runner.invoke(cli, ["add", "dqx"])
@@ -772,6 +792,55 @@ def test_collect_repository_snapshot_respects_gitignore_patterns(tmp_path):
 
     assert [item.path for item in snapshot.files] == [".gitignore", "tracked.py"]
     assert all(item.path not in {"notes.tmp", "cache/artifact.txt"} for item in snapshot.files)
+
+
+def test_collect_repository_snapshot_excludes_binary_files(tmp_path):
+    (tmp_path / "model.py").write_text("import sklearn\n")
+    (tmp_path / "model.pkl").write_bytes(b"\x80\x04\x95\x00\x00")
+    (tmp_path / "data.parquet").write_bytes(b"PAR1" + b"\x00" * 20)
+    (tmp_path / "weights.pt").write_bytes(b"\x00" * 16)
+    (tmp_path / "features.npy").write_bytes(b"\x93NUMPY" + b"\x00" * 20)
+
+    snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
+
+    assert [item.path for item in snapshot.files] == ["model.py"]
+    omitted_paths = {item.path for item in snapshot.omitted_files}
+    assert {"data.parquet", "model.pkl", "weights.pt", "features.npy"} <= omitted_paths
+
+
+def test_collect_repository_snapshot_truncates_large_files(tmp_path):
+    (tmp_path / "small.py").write_text("x = 1\n")
+    (tmp_path / "big.py").write_text("y = 2\n" * 500)
+
+    snapshot = collect_repository_snapshot(
+        tmp_path, source_label=str(tmp_path), max_file_chars=50
+    )
+
+    paths = {item.path: item for item in snapshot.files}
+    assert "small.py" in paths
+    assert not paths["small.py"].truncated
+    assert "big.py" in paths
+    assert paths["big.py"].truncated
+    assert paths["big.py"].characters == 50
+    omitted = {item.path: item.reason for item in snapshot.omitted_files}
+    assert "truncated to first 50 characters" in omitted.get("big.py", "")
+
+
+def test_collect_repository_snapshot_respects_total_budget(tmp_path):
+    (tmp_path / "a.py").write_text("a" * 100)
+    (tmp_path / "b.py").write_text("b" * 100)
+    (tmp_path / "c.py").write_text("c" * 100)
+
+    snapshot = collect_repository_snapshot(
+        tmp_path, source_label=str(tmp_path), max_total_chars=150
+    )
+
+    included_paths = [item.path for item in snapshot.files]
+    assert "a.py" in included_paths
+    assert "b.py" in included_paths
+    assert snapshot.total_characters <= 150
+    omitted_reasons = {item.path: item.reason for item in snapshot.omitted_files}
+    assert any("budget" in r for r in omitted_reasons.values())
 
 
 def test_select_review_endpoint_prefers_highest_ranked_ready_endpoint():
