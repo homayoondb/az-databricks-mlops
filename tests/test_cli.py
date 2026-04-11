@@ -1,6 +1,7 @@
 """Tests for CLI commands."""
 
 import os
+from pathlib import Path
 
 import click
 import pytest
@@ -13,6 +14,16 @@ from as_databricks_mlops.cli import (
     _resolve_profile_for_host,
     _validate_registry_schema,
     cli,
+)
+from as_databricks_mlops.review import (
+    INTERNAL_DIR_NAME,
+    REVIEW_SYSTEM_PROMPT,
+    RepositorySnapshot,
+    build_review_prompt,
+    collect_repository_snapshot,
+    query_review_model,
+    review_repository,
+    select_review_endpoint,
 )
 
 
@@ -632,3 +643,192 @@ def test_validate_registry_schema_fails_early(monkeypatch):
         )
 
     assert "missing_schema" in str(excinfo.value)
+
+
+def test_document_command_uses_review_repository(runner, tmp_path, monkeypatch):
+    os.chdir(tmp_path)
+
+    class FakeArtifact:
+        endpoint_name = "databricks-claude-opus-4-6"
+        output_path = tmp_path / "review.md"
+        prompt_path = tmp_path / INTERNAL_DIR_NAME / "latest-review-prompt.txt"
+        research_path = tmp_path / INTERNAL_DIR_NAME / "databricks-mlops-review-research.md"
+        source_label = str(tmp_path)
+        snapshot = RepositorySnapshot(
+            repo_name=tmp_path.name,
+            source_label=str(tmp_path),
+            root_path=tmp_path,
+            files=(),
+            omitted_files=(),
+            total_characters=1234,
+            prompt_payload="payload",
+        )
+
+    captured: dict[str, object] = {}
+
+    def fake_review_repository(**kwargs):
+        captured.update(kwargs)
+        return FakeArtifact()
+
+    monkeypatch.setattr("as_databricks_mlops.cli.review_repository", fake_review_repository)
+
+    result = runner.invoke(
+        cli,
+        [
+            "document",
+            "--source",
+            ".",
+            "--output",
+            "report.md",
+            "--endpoint",
+            "databricks-gpt-5-4",
+            "--max-file-chars",
+            "100",
+            "--max-total-chars",
+            "1000",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["source"] == "."
+    assert captured["preferred_endpoint"] == "databricks-gpt-5-4"
+    assert captured["max_file_chars"] == 100
+    assert captured["max_total_chars"] == 1000
+    assert captured["output_path"] == Path("report.md")
+    assert "Review document created" in result.output
+    assert "Serving endpoint: databricks-claude-opus-4-6" in result.output
+
+
+def test_document_command_validates_character_limits(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(cli, ["document", "--max-file-chars", "0"])
+    assert result.exit_code != 0
+    assert "--max-file-chars must be greater than 0" in result.output
+
+    result = runner.invoke(
+        cli,
+        ["document", "--max-file-chars", "1000", "--max-total-chars", "100"],
+    )
+    assert result.exit_code != 0
+    assert "cannot be greater than --max-total-chars" in result.output
+
+
+def test_collect_repository_snapshot_prefers_git_tracked_files(tmp_path):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "tracked.py").write_text("print('tracked')\n")
+    (tmp_path / "untracked.py").write_text("print('untracked')\n")
+
+    snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
+
+    assert [item.path for item in snapshot.files] == ["tracked.py", "untracked.py"] or [item.path for item in snapshot.files] == ["tracked.py"]
+
+
+def test_select_review_endpoint_prefers_highest_ranked_ready_endpoint():
+    class ReadyValue:
+        value = "READY"
+
+    class FakeState:
+        ready = ReadyValue()
+
+    class Endpoint:
+        def __init__(self, name: str):
+            self.name = name
+            self.state = FakeState()
+
+    class ServingEndpoints:
+        def list(self):
+            return [Endpoint("custom-endpoint"), Endpoint("databricks-gpt-5-4"), Endpoint("databricks-claude-opus-4-6")]
+
+    class FakeWorkspaceClient:
+        serving_endpoints = ServingEndpoints()
+
+    assert select_review_endpoint(FakeWorkspaceClient()) == "databricks-claude-opus-4-6"
+
+
+def test_query_review_model_returns_choice_content():
+    class FakeResponse:
+        def __init__(self):
+            self.choices = [
+                type(
+                    "Choice",
+                    (),
+                    {"message": type("Message", (), {"content": "# Review\nDone"})(), "text": None},
+                )()
+            ]
+
+    class FakeServingEndpoints:
+        def __init__(self):
+            self.captured = None
+
+        def query(self, **kwargs):
+            self.captured = kwargs
+            return FakeResponse()
+
+    class FakeWorkspaceClient:
+        def __init__(self):
+            self.serving_endpoints = FakeServingEndpoints()
+
+    client = FakeWorkspaceClient()
+    output = query_review_model(client, endpoint_name="databricks-gpt-5-4", user_prompt="hello")
+
+    assert output == "# Review\nDone"
+    assert client.serving_endpoints.captured["name"] == "databricks-gpt-5-4"
+    assert client.serving_endpoints.captured["messages"][0].content == REVIEW_SYSTEM_PROMPT
+    assert client.serving_endpoints.captured["messages"][1].content == "hello"
+
+
+def test_review_repository_writes_internal_files_and_output(tmp_path, monkeypatch):
+    (tmp_path / "train.py").write_text("print('hello')\n")
+
+    class ReadyValue:
+        value = "READY"
+
+    class FakeState:
+        ready = ReadyValue()
+
+    class Endpoint:
+        def __init__(self, name: str):
+            self.name = name
+            self.state = FakeState()
+
+    class FakeServingEndpoints:
+        def list(self):
+            return [Endpoint("databricks-gpt-5-4")]
+
+        def query(self, **kwargs):
+            return type(
+                "FakeResponse",
+                (),
+                {
+                    "choices": [
+                        type(
+                            "Choice",
+                            (),
+                            {
+                                "message": type("Message", (), {"content": "# Repo Review\nAll good"})(),
+                                "text": None,
+                            },
+                        )()
+                    ]
+                },
+            )()
+
+    class FakeWorkspaceClient:
+        def __init__(self):
+            self.serving_endpoints = FakeServingEndpoints()
+
+    artifact = review_repository(
+        source=None,
+        output_path=tmp_path / "out.md",
+        working_directory=tmp_path,
+        preferred_endpoint=None,
+        max_file_chars=1000,
+        max_total_chars=1000,
+        workspace_client=FakeWorkspaceClient(),
+    )
+
+    assert artifact.output_path.exists()
+    assert artifact.prompt_path.exists()
+    assert artifact.research_path.exists()
+    assert "# Repo Review" in artifact.output_path.read_text()
+    assert (tmp_path / INTERNAL_DIR_NAME).exists()

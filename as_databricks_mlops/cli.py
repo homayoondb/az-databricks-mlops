@@ -27,6 +27,7 @@ from as_databricks_mlops.generator import (
     render_templates,
     write_files,
 )
+from as_databricks_mlops.review import review_repository
 
 
 DEFAULT_CONFIG_FILENAMES: tuple[str, ...] = (
@@ -621,6 +622,78 @@ def clean() -> None:
         click.echo(f"Cleaned {len(removed)} files. Ready for a fresh `adm init`.")
     else:
         click.echo("Nothing to clean — no generated files found.")
+
+
+@cli.command()
+@click.option(
+    "--source",
+    default=None,
+    help="Local repository path or public Git URL to review. Defaults to the current directory.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=None,
+    help="Path for the generated Markdown review document.",
+)
+@click.option(
+    "--endpoint",
+    "preferred_endpoint",
+    default=None,
+    help="Specific Databricks Model Serving endpoint to use. Defaults to the best available preferred endpoint.",
+)
+@click.option(
+    "--max-file-chars",
+    default=120000,
+    show_default=True,
+    type=int,
+    help="Maximum characters captured from any single file.",
+)
+@click.option(
+    "--max-total-chars",
+    default=2400000,
+    show_default=True,
+    type=int,
+    help="Maximum total characters captured across the repository snapshot.",
+)
+def document(
+    source: str | None,
+    output_path: Path | None,
+    preferred_endpoint: str | None,
+    max_file_chars: int,
+    max_total_chars: int,
+) -> None:
+    """Review a repository and generate a prioritized Markdown improvement document."""
+    if max_file_chars <= 0:
+        raise click.ClickException("--max-file-chars must be greater than 0.")
+    if max_total_chars <= 0:
+        raise click.ClickException("--max-total-chars must be greater than 0.")
+    if max_file_chars > max_total_chars:
+        raise click.ClickException("--max-file-chars cannot be greater than --max-total-chars.")
+
+    try:
+        artifact = review_repository(
+            source=source,
+            output_path=output_path,
+            working_directory=Path.cwd(),
+            preferred_endpoint=preferred_endpoint,
+            max_file_chars=max_file_chars,
+            max_total_chars=max_total_chars,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    omitted_count = len(artifact.snapshot.omitted_files)
+    click.echo(f"Review document created: {artifact.output_path}")
+    click.echo(f"Source reviewed: {artifact.source_label}")
+    click.echo(f"Serving endpoint: {artifact.endpoint_name}")
+    click.echo(
+        f"Included {len(artifact.snapshot.files)} files totaling {artifact.snapshot.total_characters} characters"
+    )
+    click.echo(f"Omitted or truncated files: {omitted_count}")
+    click.echo(f"Prompt snapshot saved to {artifact.prompt_path}")
+    click.echo(f"Internal research note saved to {artifact.research_path}")
 
 
 @cli.command()
