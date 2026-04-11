@@ -26,7 +26,6 @@ sync:
 
 include:
   - ./resources/training-job.yml
-  - ./resources/inference-job.yml
 
 targets:
   dev:
