@@ -17,11 +17,16 @@ def run_training_job(job_name: str, params: dict[str, str] | None = None) -> Non
 
     w = WorkspaceClient()
 
-    matching = [j for j in w.jobs.list() if j.settings and j.settings.name == job_name]
+    # DAB development mode prefixes resource names with "[<target> <username>] ",
+    # so try exact match first, then fall back to suffix match.
+    all_jobs = list(w.jobs.list())
+    matching = [j for j in all_jobs if j.settings and j.settings.name == job_name]
+    if not matching:
+        matching = [j for j in all_jobs if j.settings and j.settings.name.endswith(job_name)]
     if not matching:
         raise ValueError(f"No job found with name: {job_name!r}")
     if len(matching) > 1:
-        raise ValueError(f"Multiple jobs found with name: {job_name!r}. Provide a unique name.")
+        raise ValueError(f"Multiple jobs found matching: {job_name!r}. Provide a unique name.")
 
     job_id = matching[0].job_id
     run_kwargs: dict = {}

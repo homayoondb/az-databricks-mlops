@@ -157,7 +157,9 @@ print("PASS: review_repository() works end-to-end in notebook")
 # MAGIC %md
 # MAGIC ## Test 5: `run_training_job()` (requires a deployed job)
 # MAGIC
-# MAGIC Set the widget below to the name of a deployed job, or leave empty to skip.
+# MAGIC Set the widget below to the job name, or leave empty to skip.
+# MAGIC Use the short name (e.g. `dev-myproject-model-training-job`) — the trigger
+# MAGIC handles DAB development mode's `[dev username]` prefix automatically via suffix matching.
 
 # COMMAND ----------
 

@@ -1,0 +1,253 @@
+{
+  "project": "as-databricks-mlops",
+  "branchName": "ralph/adm-e2e-docs-and-testing",
+  "description": "End-to-end documentation, testing, and notebook compatibility for the adm CLI",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Document adm document command in README",
+      "description": "As a user reading the README, I want to see the document command listed with usage examples so I know how to generate a repository review.",
+      "acceptanceCriteria": [
+        "adm document section added to Commands in README matching existing style",
+        "Mentions smart filtering: respects .gitignore, skips low-signal artifacts (mlruns/, logs, binary files)",
+        "Shows example for local path, remote Git URL, and default (current directory)",
+        "Mentions endpoint auto-selection behavior in one sentence",
+        "Lists key options: --source, --output, --endpoint, --max-file-chars, --max-total-chars",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-002",
+      "title": "Document adm trigger command in README",
+      "description": "As a user, I want to see adm trigger documented so I know it exists as a lightweight alternative to adm run.",
+      "acceptanceCriteria": [
+        "adm trigger section added to Commands in README",
+        "Clearly states it re-runs an already-deployed job via SDK (no CLI needed, no redeploy)",
+        "Mentions notebook-native usage: from as_databricks_mlops import run_training_job",
+        "Shows the --target option",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-003",
+      "title": "Document programmatic API for notebooks in README",
+      "description": "As a user working inside a Databricks notebook, I want the README to show me how to pip-install the package and call its functions directly.",
+      "acceptanceCriteria": [
+        "New Notebook Usage section added to README",
+        "Shows pip install command from GitHub",
+        "Shows from as_databricks_mlops import run_training_job example with argument",
+        "Shows from as_databricks_mlops import review_repository example for document generation",
+        "Notes which commands work in notebooks (trigger, document) vs which require local CLI (init, run)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-004",
+      "title": "Full README audit for staleness",
+      "description": "As a maintainer, I want the README to be accurate against the current CLI surface.",
+      "acceptanceCriteria": [
+        "All 7 commands listed in Commands section",
+        "Package version / naming references are accurate (as-databricks-mlops, adm)",
+        "No dead references to removed features or wrong flag names",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-005",
+      "title": "Add --no-validate flag to adm init",
+      "description": "As a notebook user, I want adm init to skip databricks bundle validate so I can scaffold projects in environments without the CLI.",
+      "acceptanceCriteria": [
+        "--no-validate flag added to adm init click command",
+        "When passed, prints 'Skipping bundle validation (--no-validate).' and skips _run_bundle_validate",
+        "Test in test_cli.py verifies the flag works and output message appears",
+        "adm init --help shows --no-validate with description",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-006",
+      "title": "Add automated tests for binary file exclusion in snapshots",
+      "description": "As a developer, I want pytest coverage proving binary files (.pkl, .parquet, .pt, .npy) are excluded from repository snapshots.",
+      "acceptanceCriteria": [
+        "Test creates tmp_path with .pkl, .parquet, .pt, .npy files alongside a .py file",
+        "Asserts only the .py file appears in snapshot.files",
+        "Asserts binary files appear in snapshot.omitted_files with correct reason",
+        "Test is in tests/test_cli.py",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Completed in f224afd as test_collect_repository_snapshot_excludes_binary_files. Review only."
+    },
+    {
+      "id": "US-007",
+      "title": "Add automated test for max-file-chars truncation",
+      "description": "As a developer, I want pytest coverage proving the --max-file-chars limit truncates large files correctly.",
+      "acceptanceCriteria": [
+        "Test creates a small file and a large file exceeding max_file_chars",
+        "Calls collect_repository_snapshot with a low max_file_chars value",
+        "Asserts the large file is included but truncated (truncated=True, characters == max_file_chars)",
+        "Asserts the small file is not truncated",
+        "Asserts omitted_files contains a truncation reason for the large file",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Completed in f224afd as test_collect_repository_snapshot_truncates_large_files. Review only."
+    },
+    {
+      "id": "US-008",
+      "title": "Add automated test for total prompt budget enforcement",
+      "description": "As a developer, I want pytest coverage proving the --max-total-chars budget stops including files once the limit is reached.",
+      "acceptanceCriteria": [
+        "Test creates 3 files of 100 chars each, calls snapshot with max_total_chars=150",
+        "Asserts total_characters <= 150",
+        "Asserts at least one file is in omitted_files with a budget-related reason",
+        "Test is in tests/test_cli.py",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Completed in f224afd as test_collect_repository_snapshot_respects_total_budget. Review only."
+    },
+    {
+      "id": "US-009",
+      "title": "Build Databricks E2E test notebook",
+      "description": "As a developer, I want an automated test notebook that pip-installs the package inside a Databricks notebook and validates review_repository and run_training_job.",
+      "acceptanceCriteria": [
+        "Notebook at tests/notebook_e2e_test.py with Databricks notebook source header",
+        "Test 1: package import and version check",
+        "Test 2: snapshot collection without LLM call (binary exclusion verified)",
+        "Test 3: clone a remote repo and collect snapshot",
+        "Test 4: full review_repository() call with real LLM endpoint",
+        "Test 5: run_training_job() with widget-provided job name",
+        "Notebook excluded from local pytest via tests/conftest.py collect_ignore",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Completed in f224afd. Review only."
+    },
+    {
+      "id": "US-010",
+      "title": "E2E validation: adm document on local messy-ml-project",
+      "description": "As a developer, I want to verify that adm document generates a valid review document when pointed at the bundled example project.",
+      "acceptanceCriteria": [
+        "adm document --source examples/messy-ml-project exits 0",
+        "Output file contains HTML comment header (source, endpoint, timestamp)",
+        "Output file contains Markdown review with headings (355+ lines)",
+        ".adm_internal/latest-review-prompt.txt was written",
+        "21 files included, 9 omitted (binary/low-signal artifacts excluded)"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Validated manually. Endpoint: databricks-gpt-5-4-mini. Review only."
+    },
+    {
+      "id": "US-011",
+      "title": "E2E validation: adm document on remote Git URL",
+      "description": "As a developer, I want to verify that adm document can clone and review a remote repository.",
+      "acceptanceCriteria": [
+        "adm document --source https://github.com/homayoon-moradi_data/az-databricks-mlops.git exits 0",
+        "Output file contains valid Markdown review (384+ lines)",
+        "51 files included from cloned repo",
+        "Temp clone directory cleaned up after completion"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Validated manually. Endpoint: databricks-gpt-5-4-mini. Review only."
+    },
+    {
+      "id": "US-012",
+      "title": "E2E validation: full MLOps pipeline (init -> run -> job success)",
+      "description": "As a developer, I want to verify the core MLOps flow works end-to-end in Databricks.",
+      "acceptanceCriteria": [
+        "adm clean in examples/messy-ml-project succeeds (13 files removed)",
+        "adm init with flags succeeds, bundle validates",
+        "adm run deploys bundle and starts training job",
+        "Databricks job completes: Train SUCCESS, ModelValidation SUCCESS, ModelDeployment SUCCESS",
+        "Model registered in Unity Catalog with champion alias"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Validated manually. Job run 1122003268392490 completed all 3 tasks with SUCCESS. Review only."
+    },
+    {
+      "id": "US-013",
+      "title": "Fix adm trigger job name to match DAB development mode prefix",
+      "description": "As a user, I want adm trigger to find my deployed job even when DAB prepends [dev username] to the job name in development mode.",
+      "acceptanceCriteria": [
+        "In trigger.py, change job matching from exact name match to suffix/contains match that handles the DAB [target username] prefix",
+        "adm trigger --target dev finds job named '[dev homayoon_moradi] dev-project-model-training-job'",
+        "Still raises ValueError when no job matches at all",
+        "Still raises ValueError when multiple jobs match",
+        "Add test in test_cli.py for trigger job name matching with DAB prefix",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Fixed: suffix match in trigger.py. 4 tests added. Verified live against deployed job."
+    },
+    {
+      "id": "US-014",
+      "title": "Add --no-validate to adm new if it calls bundle validate",
+      "description": "As a developer, I want adm new to also support --no-validate so notebook users can scaffold new projects without the databricks CLI.",
+      "acceptanceCriteria": [
+        "Check if adm new also calls _run_bundle_validate; if so, add --no-validate flag matching the adm init implementation",
+        "Add test in test_cli.py verifying --no-validate skips validation for adm new",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "adm new does NOT call _run_bundle_validate — only prints a hint. No flag needed."
+    },
+    {
+      "id": "US-015",
+      "title": "Update PRD Non-Goals to reflect --no-validate decision",
+      "description": "As a maintainer, I want the PRD to accurately reflect that --no-validate was added.",
+      "acceptanceCriteria": [
+        "In tasks/prd-adm-e2e-docs-and-testing.md, update Non-Goals to remove 'No new CLI flags or commands'",
+        "Add a note that --no-validate was added per Decision #2",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Updated Non-Goals with strikethrough and Decision #2 reference."
+    },
+    {
+      "id": "US-016",
+      "title": "Update notebook E2E test to use correct DAB job name format",
+      "description": "As a developer, I want the Databricks test notebook to use the correct job name format so the run_training_job test passes.",
+      "acceptanceCriteria": [
+        "In tests/notebook_e2e_test.py, update the job name widget hint to mention the [dev username] prefix pattern",
+        "Add a comment explaining the DAB development mode naming convention",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Updated widget hint to explain DAB prefix and suffix matching."
+    }
+  ]
+}

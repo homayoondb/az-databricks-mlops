@@ -129,7 +129,7 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 ## Non-Goals
 
 - No changes to the `adm init` or `adm new` template generation logic
-- No new CLI flags or commands
+- ~~No new CLI flags or commands~~ — `--no-validate` was added to `adm init` per Decision #2
 - No CI/CD pipeline setup (tests are run manually with real Databricks endpoints)
 - No changes to the LLM prompt or review quality — only validating that the plumbing works
 - No support for `adm init` / `adm run` inside notebooks (these require `databricks bundle` CLI which isn't in notebook runtimes)

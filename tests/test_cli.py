@@ -16,6 +16,7 @@ from as_databricks_mlops.cli import (
     _validate_registry_schema,
     cli,
 )
+from as_databricks_mlops.trigger import run_training_job
 from as_databricks_mlops.review import (
     INTERNAL_DIR_NAME,
     REVIEW_SYSTEM_PROMPT,
@@ -952,3 +953,95 @@ def test_review_repository_writes_internal_files_and_output(tmp_path, monkeypatc
     assert artifact.research_path.exists()
     assert "# Repo Review" in artifact.output_path.read_text()
     assert (tmp_path / INTERNAL_DIR_NAME).exists()
+
+
+# ---------------------------------------------------------------------------
+# run_training_job — DAB development mode prefix handling
+# ---------------------------------------------------------------------------
+
+
+class _FakeJobSettings:
+    def __init__(self, name: str):
+        self.name = name
+
+
+class _FakeJob:
+    def __init__(self, name: str, job_id: int):
+        self.settings = _FakeJobSettings(name)
+        self.job_id = job_id
+
+
+class _FakeRunResponse:
+    run_id = 42
+
+
+def test_run_training_job_exact_match(monkeypatch):
+    jobs = [_FakeJob("dev-myproj-model-training-job", 1)]
+
+    class FakeClient:
+        class config:
+            host = "https://example.com"
+
+        class jobs:
+            @staticmethod
+            def list():
+                return iter(jobs)
+
+            @staticmethod
+            def run_now(job_id, **kwargs):
+                return _FakeRunResponse()
+
+    monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: FakeClient())
+    run_training_job("dev-myproj-model-training-job")
+
+
+def test_run_training_job_dab_prefix_suffix_match(monkeypatch):
+    """DAB development mode prefixes names with '[dev username] '."""
+    jobs = [_FakeJob("[dev homayoon_moradi] dev-myproj-model-training-job", 1)]
+
+    class FakeClient:
+        class config:
+            host = "https://example.com"
+
+        class jobs:
+            @staticmethod
+            def list():
+                return iter(jobs)
+
+            @staticmethod
+            def run_now(job_id, **kwargs):
+                return _FakeRunResponse()
+
+    monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: FakeClient())
+    run_training_job("dev-myproj-model-training-job")
+
+
+def test_run_training_job_no_match_raises(monkeypatch):
+    jobs = [_FakeJob("unrelated-job", 1)]
+
+    class FakeClient:
+        class jobs:
+            @staticmethod
+            def list():
+                return iter(jobs)
+
+    monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: FakeClient())
+    with pytest.raises(ValueError, match="No job found"):
+        run_training_job("dev-myproj-model-training-job")
+
+
+def test_run_training_job_multiple_match_raises(monkeypatch):
+    jobs = [
+        _FakeJob("[dev user1] dev-myproj-model-training-job", 1),
+        _FakeJob("[dev user2] dev-myproj-model-training-job", 2),
+    ]
+
+    class FakeClient:
+        class jobs:
+            @staticmethod
+            def list():
+                return iter(jobs)
+
+    monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: FakeClient())
+    with pytest.raises(ValueError, match="Multiple jobs found"):
+        run_training_job("dev-myproj-model-training-job")
