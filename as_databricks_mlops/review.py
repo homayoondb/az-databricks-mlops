@@ -424,7 +424,7 @@ def _iter_repo_files(root_path: Path) -> Iterator[Path]:
     git_dir = root_path / ".git"
     if git_dir.exists():
         result = subprocess.run(
-            ["git", "ls-files"],
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
             cwd=root_path,
             capture_output=True,
             text=True,

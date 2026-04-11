@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import subprocess
 
 import click
 import pytest
@@ -717,10 +718,13 @@ def test_collect_repository_snapshot_prefers_git_tracked_files(tmp_path):
     (tmp_path / ".git").mkdir()
     (tmp_path / "tracked.py").write_text("print('tracked')\n")
     (tmp_path / "untracked.py").write_text("print('untracked')\n")
+    (tmp_path / ".gitignore").write_text("ignored.log\n")
+    (tmp_path / "ignored.log").write_text("noise\n")
 
     snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
 
-    assert [item.path for item in snapshot.files] == ["tracked.py", "untracked.py"] or [item.path for item in snapshot.files] == ["tracked.py"]
+    assert [item.path for item in snapshot.files] == [".gitignore", "tracked.py", "untracked.py"] or [item.path for item in snapshot.files] == ["tracked.py"]
+    assert all(item.path != "ignored.log" for item in snapshot.files)
 
 
 def test_collect_repository_snapshot_ignores_low_signal_generated_artifacts(tmp_path):
@@ -754,6 +758,20 @@ def test_collect_repository_snapshot_ignores_log_suffix_files(tmp_path):
     assert [item.path for item in snapshot.files] == ["src/main.py"]
     omitted = {item.path: item.reason for item in snapshot.omitted_files}
     assert omitted["training.log"] == "ignored irrelevant log or output file 'training.log'"
+
+
+def test_collect_repository_snapshot_respects_gitignore_patterns(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / ".gitignore").write_text("*.tmp\ncache/\n")
+    (tmp_path / "tracked.py").write_text("print('tracked')\n")
+    (tmp_path / "notes.tmp").write_text("temporary\n")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "artifact.txt").write_text("artifact\n")
+
+    snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
+
+    assert [item.path for item in snapshot.files] == [".gitignore", "tracked.py"]
+    assert all(item.path not in {"notes.tmp", "cache/artifact.txt"} for item in snapshot.files)
 
 
 def test_select_review_endpoint_prefers_highest_ranked_ready_endpoint():
