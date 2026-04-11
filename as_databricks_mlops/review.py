@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import os
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterator
 from urllib.parse import urlparse
 
@@ -31,28 +31,49 @@ MODEL_ENDPOINT_PREFERENCES: tuple[str, ...] = (
     "databricks-gpt-5-mini",
 )
 
-SKIP_DIRECTORY_NAMES = {
+PRUNE_DIRECTORY_NAMES = {
     ".git",
     ".hg",
     ".svn",
     ".idea",
     ".vscode",
+    ".ipynb_checkpoints",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".terraform",
     ".tox",
     ".nox",
     ".venv",
     "venv",
     "__pycache__",
+    "htmlcov",
     "node_modules",
     "dist",
     "build",
     INTERNAL_DIR_NAME,
 }
 
-SKIP_FILE_NAMES = {
-    ".DS_Store",
+LOW_SIGNAL_DIRECTORY_NAMES = {
+    ".databricks",
+    "logs",
+    "log",
+    "mlruns",
+    "wandb",
+}
+
+SKIP_DIRECTORY_NAMES = PRUNE_DIRECTORY_NAMES | LOW_SIGNAL_DIRECTORY_NAMES
+
+LOW_SIGNAL_FILE_NAMES = {
+    ".coverage",
+    "terraform.tfstate",
+    "terraform.tfstate.backup",
+}
+
+SKIP_FILE_NAMES = {".DS_Store"} | LOW_SIGNAL_FILE_NAMES
+
+SKIP_TEXT_FILE_SUFFIXES = {
+    ".log",
 }
 
 BINARY_SUFFIXES = {
@@ -155,6 +176,7 @@ This note captures the references and review policy used by `adm document` so th
 ## Key decisions
 
 - Prefer long-context Databricks-hosted serving endpoints for deep repo review.
+- Exclude low-signal runtime artifacts such as MLflow run folders, generated Databricks bundle state, Terraform cache/state, and log directories so prompt budget stays focused on source code and configuration.
 - Use a single Markdown report that is easy to scan and grouped into `Start here`, `Now`, `Next`, and `Later` priorities.
 - Separate expectations for classic ML repos versus LLM / RAG / agentic repos.
 - Treat missing evidence explicitly instead of assuming a capability exists or does not exist.
@@ -309,6 +331,11 @@ def collect_repository_snapshot(
 
     for file_path in _iter_repo_files(root_path):
         relative_path = file_path.relative_to(root_path).as_posix()
+        skip_reason = _skip_reason_for_relative_path(relative_path)
+        if skip_reason is not None:
+            omitted_files.append(OmittedFile(path=relative_path, reason=skip_reason))
+            continue
+
         text, reason = _read_text_file(file_path)
         if text is None:
             omitted_files.append(OmittedFile(path=relative_path, reason=reason))
@@ -373,6 +400,24 @@ def collect_repository_snapshot(
     )
 
 
+def _skip_reason_for_relative_path(relative_path: str) -> str | None:
+    """Return an omission reason when a path is a low-signal generated artifact."""
+    path = PurePosixPath(relative_path)
+
+    for part in path.parts[:-1]:
+        if part in SKIP_DIRECTORY_NAMES or part.endswith(".egg-info"):
+            return f"ignored irrelevant directory '{part}'"
+
+    file_name = path.name
+    if file_name in LOW_SIGNAL_FILE_NAMES or file_name.startswith(".coverage"):
+        return f"ignored irrelevant generated file '{file_name}'"
+
+    if path.suffix.lower() in SKIP_TEXT_FILE_SUFFIXES:
+        return f"ignored irrelevant log or output file '{file_name}'"
+
+    return None
+
+
 def _iter_repo_files(root_path: Path) -> Iterator[Path]:
     """Yield candidate files in deterministic order."""
     yielded = False
@@ -397,10 +442,10 @@ def _iter_repo_files(root_path: Path) -> Iterator[Path]:
         dirnames[:] = sorted(
             name
             for name in dirnames
-            if name not in SKIP_DIRECTORY_NAMES and not name.endswith(".egg-info")
+            if name not in PRUNE_DIRECTORY_NAMES and not name.endswith(".egg-info")
         )
         for filename in sorted(filenames):
-            if filename in SKIP_FILE_NAMES:
+            if filename == ".DS_Store":
                 continue
             file_path = Path(current_root) / filename
             if file_path.is_symlink():

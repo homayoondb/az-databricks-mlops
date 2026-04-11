@@ -723,6 +723,39 @@ def test_collect_repository_snapshot_prefers_git_tracked_files(tmp_path):
     assert [item.path for item in snapshot.files] == ["tracked.py", "untracked.py"] or [item.path for item in snapshot.files] == ["tracked.py"]
 
 
+def test_collect_repository_snapshot_ignores_low_signal_generated_artifacts(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("print('hello')\n")
+    (tmp_path / "mlruns").mkdir()
+    (tmp_path / "mlruns" / "meta.yaml").write_text("artifact_uri: file:///tmp/mlruns\n")
+    (tmp_path / ".databricks").mkdir()
+    (tmp_path / ".databricks" / "bundle.json").write_text('{"generated": true}\n')
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "app.log").write_text("something happened\n")
+    (tmp_path / "terraform.tfstate").write_text("{}\n")
+
+    snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
+
+    assert [item.path for item in snapshot.files] == ["src/main.py"]
+    omitted = {item.path: item.reason for item in snapshot.omitted_files}
+    assert omitted["mlruns/meta.yaml"] == "ignored irrelevant directory 'mlruns'"
+    assert omitted[".databricks/bundle.json"] == "ignored irrelevant directory '.databricks'"
+    assert omitted["logs/app.log"] == "ignored irrelevant directory 'logs'"
+    assert omitted["terraform.tfstate"] == "ignored irrelevant generated file 'terraform.tfstate'"
+
+
+def test_collect_repository_snapshot_ignores_log_suffix_files(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("print('hello')\n")
+    (tmp_path / "training.log").write_text("epoch=1\n")
+
+    snapshot = collect_repository_snapshot(tmp_path, source_label=str(tmp_path))
+
+    assert [item.path for item in snapshot.files] == ["src/main.py"]
+    omitted = {item.path: item.reason for item in snapshot.omitted_files}
+    assert omitted["training.log"] == "ignored irrelevant log or output file 'training.log'"
+
+
 def test_select_review_endpoint_prefers_highest_ranked_ready_endpoint():
     class ReadyValue:
         value = "READY"
