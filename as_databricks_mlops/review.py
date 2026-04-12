@@ -22,11 +22,16 @@ INTERNAL_DIR_NAME = ".adm_internal"
 RESEARCH_FILENAME = "databricks-mlops-review-research.md"
 
 MODEL_ENDPOINT_PREFERENCES: tuple[str, ...] = (
+    # 1M context
     "databricks-claude-opus-4-6",
-    "databricks-gemini-3-1-pro",
-    "databricks-gemini-2-5-pro",
+    # 400K context, 128K output
     "databricks-gpt-5-4",
+    "databricks-gpt-5-2",
+    "databricks-gpt-5-2-codex",
+    # 200K context
+    "databricks-claude-opus-4-5",
     "databricks-claude-sonnet-4-6",
+    # 128K context — cost-optimized fallbacks
     "databricks-gpt-5-4-mini",
     "databricks-gpt-5-mini",
 )
