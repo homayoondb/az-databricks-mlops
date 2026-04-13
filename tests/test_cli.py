@@ -710,8 +710,8 @@ def test_document_command_uses_review_repository(runner, tmp_path, monkeypatch):
     assert captured["max_file_chars"] == 100
     assert captured["max_total_chars"] == 1000
     assert captured["output_path"] == Path("report.md")
-    assert "Review document created" in result.output
-    assert "Serving endpoint: databricks-claude-opus-4-6" in result.output
+    assert "Done!" in result.output
+    assert "databricks-claude-opus-4-6" in result.output
 
 
 def test_document_command_validates_character_limits(runner, tmp_path):
@@ -856,7 +856,9 @@ def test_select_review_endpoint_prefers_highest_ranked_ready_endpoint():
     class FakeWorkspaceClient:
         serving_endpoints = ServingEndpoints()
 
-    assert select_review_endpoint(FakeWorkspaceClient()) == "databricks-claude-opus-4-6"
+    chosen, fallbacks = select_review_endpoint(FakeWorkspaceClient())
+    assert chosen == "databricks-gpt-5-4"
+    assert "databricks-claude-opus-4-6" in fallbacks
 
 
 def test_query_review_model_returns_choice_content():

@@ -11,6 +11,7 @@ venv/
 .databricks/
 .databricks-resources.json
 .adm_internal/
+*-adm-review.md
 
 # IDE
 .idea/

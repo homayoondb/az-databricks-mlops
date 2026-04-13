@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import re
 import subprocess
-import urllib.parse
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Any
@@ -683,6 +681,21 @@ def document(
     if max_file_chars > max_total_chars:
         raise click.ClickException("--max-file-chars cannot be greater than --max-total-chars.")
 
+    total_steps = 7
+    step = 0
+
+    def _progress(msg: str) -> None:
+        nonlocal step
+        step += 1
+        click.echo(click.style(f"  [{step}/{total_steps}] ", fg="cyan") + msg)
+
+    def _detail(msg: str) -> None:
+        click.echo(click.style("         ", fg="cyan") + click.style(msg, dim=True))
+
+    click.echo()
+    click.echo(click.style("adm document", bold=True) + " — generating repository review")
+    click.echo()
+
     try:
         artifact = review_repository(
             source=source,
@@ -691,20 +704,38 @@ def document(
             preferred_endpoint=preferred_endpoint,
             max_file_chars=max_file_chars,
             max_total_chars=max_total_chars,
+            on_status=_progress,
+            on_detail=_detail,
         )
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:
+        click.echo()
+        click.echo(click.style("  Failed", fg="red", bold=True) + f" at step [{step}/{total_steps}]")
+        msg = str(exc)
+        if "cannot configure default credentials" in msg or "default auth" in msg:
+            raise click.ClickException(
+                "Databricks authentication failed. "
+                "Set one of the following before running `adm document`:\n\n"
+                "  1. Export a config profile:  export DATABRICKS_CONFIG_PROFILE=<profile>\n"
+                "  2. Export host and token:     export DATABRICKS_HOST=https://... DATABRICKS_TOKEN=dapi...\n"
+                "  3. Add a .env file with DATABRICKS_CONFIG_PROFILE=<profile> in the working directory\n\n"
+                "See https://docs.databricks.com/en/dev-tools/auth.html for all authentication methods."
+            ) from exc
+        if isinstance(exc, TimeoutError) or "timed out" in msg.lower() or "ReadTimeout" in msg:
+            raise click.ClickException(
+                f"Request timed out while waiting for the model endpoint.\n\n"
+                f"  This usually means the endpoint is cold-starting or the repository is very large.\n"
+                f"  Try again, or use a smaller/faster endpoint: adm document --endpoint databricks-gpt-5-4-mini"
+            ) from exc
+        raise click.ClickException(f"{type(exc).__name__}: {msg}") from exc
 
-    omitted_count = len(artifact.snapshot.omitted_files)
-    click.echo(f"Review document created: {artifact.output_path}")
-    click.echo(f"Source reviewed: {artifact.source_label}")
-    click.echo(f"Serving endpoint: {artifact.endpoint_name}")
-    click.echo(
-        f"Included {len(artifact.snapshot.files)} files totaling {artifact.snapshot.total_characters} characters"
-    )
-    click.echo(f"Omitted or truncated files: {omitted_count}")
-    click.echo(f"Prompt snapshot saved to {artifact.prompt_path}")
-    click.echo(f"Internal research note saved to {artifact.research_path}")
+    click.echo()
+    click.echo(click.style("  Done!", fg="green", bold=True))
+    click.echo()
+    click.echo(f"  Review:   {artifact.output_path}")
+    click.echo(f"  Endpoint: {artifact.endpoint_name}")
+    click.echo(f"  Files:    {len(artifact.snapshot.files)} included, {len(artifact.snapshot.omitted_files)} omitted")
+    click.echo(f"  Chars:    {artifact.snapshot.total_characters:,}")
+    click.echo()
 
 
 @cli.command()
@@ -822,6 +853,18 @@ def trigger(target: str) -> None:
             "databricks-sdk is required for `adm trigger`. "
             "Install it: pip install 'az-databricks-mlops[sdk]'"
         )
+    except Exception as exc:
+        msg = str(exc)
+        if "cannot configure default credentials" in msg or "default auth" in msg:
+            raise click.ClickException(
+                "Databricks authentication failed. "
+                "Set one of the following before running `adm trigger`:\n\n"
+                "  1. Export a config profile:  export DATABRICKS_CONFIG_PROFILE=<profile>\n"
+                "  2. Export host and token:     export DATABRICKS_HOST=https://... DATABRICKS_TOKEN=dapi...\n"
+                "  3. Add a .env file with DATABRICKS_CONFIG_PROFILE=<profile> in the working directory\n\n"
+                "See https://docs.databricks.com/en/dev-tools/auth.html for all authentication methods."
+            ) from exc
+        raise
 
 
 @cli.group()

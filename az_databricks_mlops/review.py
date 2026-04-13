@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
-from typing import Iterator
+from typing import Callable, Iterator
 from urllib.parse import urlparse
+
+import requests as _requests
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
@@ -18,22 +24,25 @@ from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
 DEFAULT_MAX_FILE_CHARS = 120_000
 DEFAULT_MAX_TOTAL_CHARS = 2_400_000
 DEFAULT_MAX_OUTPUT_TOKENS = 12_000
+DEFAULT_PROBE_TIMEOUT_SECONDS = 10
 INTERNAL_DIR_NAME = ".adm_internal"
 RESEARCH_FILENAME = "databricks-mlops-review-research.md"
 
 MODEL_ENDPOINT_PREFERENCES: tuple[str, ...] = (
-    # 1M context
-    "databricks-claude-opus-4-6",
-    # 400K context, 128K output
+    # OpenAI
     "databricks-gpt-5-4",
+    "databricks-gpt-5-3-codex",
     "databricks-gpt-5-2",
     "databricks-gpt-5-2-codex",
-    # 200K context
-    "databricks-claude-opus-4-5",
-    "databricks-claude-sonnet-4-6",
-    # 128K context — cost-optimized fallbacks
     "databricks-gpt-5-4-mini",
     "databricks-gpt-5-mini",
+    # Google
+    "databricks-gemini-2-5-pro",
+    "databricks-gemini-2-5-flash",
+    # Anthropic
+    "databricks-claude-opus-4-6",
+    "databricks-claude-opus-4-5",
+    "databricks-claude-sonnet-4-6",
 )
 
 PRUNE_DIRECTORY_NAMES = {
@@ -482,8 +491,15 @@ def _read_text_file(file_path: Path) -> tuple[str | None, str]:
     return text, ""
 
 
-def select_review_endpoint(workspace_client: WorkspaceClient, preferred_endpoint: str | None = None) -> str:
-    """Choose the best available Databricks Model Serving endpoint for repo review."""
+def select_review_endpoint(
+    workspace_client: WorkspaceClient,
+    preferred_endpoint: str | None = None,
+) -> tuple[str, list[str]]:
+    """Choose the best available endpoint and return ``(chosen, fallbacks)``.
+
+    *fallbacks* is the remaining preference-ordered list of READY endpoints
+    to try if the chosen one times out.
+    """
     endpoints = list(workspace_client.serving_endpoints.list())
     ready_endpoints = {
         endpoint.name
@@ -499,13 +515,13 @@ def select_review_endpoint(workspace_client: WorkspaceClient, preferred_endpoint
             raise ValueError(
                 f"Requested endpoint '{preferred_endpoint}' is not READY. Available READY endpoints: {available}"
             )
-        return preferred_endpoint
+        return preferred_endpoint, []
 
-    for endpoint_name in MODEL_ENDPOINT_PREFERENCES:
-        if endpoint_name in ready_endpoints:
-            return endpoint_name
+    candidates = [ep for ep in MODEL_ENDPOINT_PREFERENCES if ep in ready_endpoints]
+    if not candidates:
+        candidates = sorted(ready_endpoints)
 
-    return sorted(ready_endpoints)[0]
+    return candidates[0], candidates[1:]
 
 
 def _is_ready(endpoint: object) -> bool:
@@ -514,6 +530,24 @@ def _is_ready(endpoint: object) -> bool:
     ready_value = getattr(state, "ready", None)
     value = getattr(ready_value, "value", ready_value)
     return value == "READY"
+
+
+def _format_file_tree(files: tuple[CollectedFile, ...]) -> list[str]:
+    """Format collected files as a compact directory tree."""
+    by_dir: dict[str, list[str]] = defaultdict(list)
+    for f in files:
+        parts = PurePosixPath(f.path).parts
+        if len(parts) > 1:
+            by_dir[str(PurePosixPath(*parts[:-1]))].append(parts[-1])
+        else:
+            by_dir["."].append(f.path)
+
+    lines: list[str] = []
+    for directory in sorted(by_dir):
+        prefix = f"{directory}/" if directory != "." else ""
+        names = sorted(by_dir[directory])
+        lines.append(f"{prefix}{', '.join(names)}")
+    return lines
 
 
 def build_review_prompt(snapshot: RepositorySnapshot) -> str:
@@ -541,24 +575,188 @@ Repository snapshot begins below.
 """
 
 
+def _query_with_fallback(
+    workspace_client: WorkspaceClient,
+    *,
+    endpoint_name: str,
+    fallbacks: list[str],
+    user_prompt: str,
+    on_detail: Callable[[str], None] | None = None,
+    first_token_timeout: int = DEFAULT_PROBE_TIMEOUT_SECONDS,
+) -> tuple[str, str]:
+    """Try the preferred endpoint; fall back to alternatives on timeout.
+
+    Returns ``(response_text, endpoint_name_used)``.
+
+    The first attempt uses a short timeout (*first_token_timeout*) so cold or
+    overloaded endpoints are skipped quickly.  Fallback endpoints also use the
+    short timeout.  If every candidate times out on the short window, the
+    preferred endpoint is retried with the full timeout.
+    """
+    _detail = on_detail or (lambda _msg: None)
+    candidates = [endpoint_name, *fallbacks]
+
+    for ep in candidates:
+        try:
+            body = query_review_model(
+                workspace_client,
+                endpoint_name=ep,
+                user_prompt=user_prompt,
+                timeout_override=first_token_timeout,
+                on_detail=_detail,
+            )
+            return body, ep
+        except (TimeoutError, _requests.exceptions.ReadTimeout, Exception) as exc:
+            if (
+                "timed out" not in str(exc).lower()
+                and not isinstance(exc, (TimeoutError, _requests.exceptions.ReadTimeout))
+            ):
+                raise
+            _detail(f"{ep} did not respond within {first_token_timeout}s, trying next...")
+
+    # All timed out on short window — retry the preferred with full timeout.
+    _detail(f"Retrying {endpoint_name} with extended timeout...")
+    body = query_review_model(
+        workspace_client,
+        endpoint_name=endpoint_name,
+        user_prompt=user_prompt,
+        on_detail=_detail,
+    )
+    return body, endpoint_name
+
+
 def query_review_model(
     workspace_client: WorkspaceClient,
     *,
     endpoint_name: str,
     user_prompt: str,
     max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    timeout_override: int | None = None,
+    on_detail: Callable[[str], None] | None = None,
 ) -> str:
-    """Send the repository review prompt to Databricks Model Serving."""
-    response = workspace_client.serving_endpoints.query(
-        name=endpoint_name,
-        messages=[
-            ChatMessage(role=ChatMessageRole.SYSTEM, content=REVIEW_SYSTEM_PROMPT),
-            ChatMessage(role=ChatMessageRole.USER, content=user_prompt),
-        ],
-        max_tokens=max_output_tokens,
-        temperature=0,
-    )
+    """Send the repository review prompt via streaming SSE.
 
+    Streams the response token-by-token so the caller can report progress.
+    Falls back to a non-streaming call if streaming fails.
+    """
+    _detail = on_detail or (lambda _msg: None)
+    effective_timeout = timeout_override if timeout_override is not None else 600
+
+    host = getattr(getattr(workspace_client, "config", None), "host", None)
+    token = getattr(getattr(workspace_client, "config", None), "token", None)
+
+    if host and token:
+        try:
+            return _query_streaming(
+                host=host,
+                token=token,
+                endpoint_name=endpoint_name,
+                user_prompt=user_prompt,
+                max_output_tokens=max_output_tokens,
+                timeout=effective_timeout,
+                on_detail=_detail,
+            )
+        except (TimeoutError, _requests.exceptions.ReadTimeout):
+            raise
+        except Exception:
+            # Streaming failed (e.g. endpoint doesn't support it) — fall back.
+            pass
+
+    # Non-streaming fallback via SDK.
+    config = getattr(workspace_client, "config", None)
+    original_timeout = None
+    if config is not None:
+        original_timeout = getattr(config, "http_timeout_seconds", None)
+        config.http_timeout_seconds = effective_timeout
+    try:
+        response = workspace_client.serving_endpoints.query(
+            name=endpoint_name,
+            messages=[
+                ChatMessage(role=ChatMessageRole.SYSTEM, content=REVIEW_SYSTEM_PROMPT),
+                ChatMessage(role=ChatMessageRole.USER, content=user_prompt),
+            ],
+            max_tokens=max_output_tokens,
+            temperature=0,
+        )
+    finally:
+        if config is not None and original_timeout is not None:
+            config.http_timeout_seconds = original_timeout
+
+    return _extract_response_text(response)
+
+
+def _query_streaming(
+    *,
+    host: str,
+    token: str,
+    endpoint_name: str,
+    user_prompt: str,
+    max_output_tokens: int,
+    timeout: int,
+    on_detail: Callable[[str], None],
+) -> str:
+    """Stream an SSE response and report progress to *on_detail*."""
+    url = f"{host.rstrip('/')}/serving-endpoints/{endpoint_name}/invocations"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+    body = {
+        "messages": [
+            {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "max_tokens": max_output_tokens,
+        "temperature": 0,
+        "stream": True,
+    }
+
+    collected: list[str] = []
+    chars = 0
+    start = time.monotonic()
+    last_report = start
+
+    resp = _requests.post(url, json=body, headers=headers, stream=True, timeout=(10, timeout))
+    resp.raise_for_status()
+
+    for raw_line in resp.iter_lines(decode_unicode=True):
+        if not raw_line or not raw_line.startswith("data: "):
+            continue
+        payload = raw_line[len("data: "):]
+        if payload.strip() == "[DONE]":
+            break
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+
+        # Extract delta content from the SSE chunk.
+        choices = chunk.get("choices", [])
+        if not choices:
+            continue
+        delta = choices[0].get("delta", {})
+        text = delta.get("content") or ""
+        if text:
+            collected.append(text)
+            chars += len(text)
+            now = time.monotonic()
+            if now - last_report >= 5.0:
+                elapsed = int(now - start)
+                on_detail(f"Generating... {chars:,} chars received ({elapsed}s)")
+                last_report = now
+
+    elapsed = int(time.monotonic() - start)
+    on_detail(f"Done — {chars:,} chars received in {elapsed}s")
+
+    full_text = "".join(collected).strip()
+    if not full_text:
+        raise ValueError("Streaming response did not contain any text output.")
+    return full_text
+
+
+def _extract_response_text(response: object) -> str:
+    """Extract text from a non-streaming QueryEndpointResponse."""
     choices = getattr(response, "choices", None) or []
     if choices:
         message = getattr(choices[0], "message", None)
@@ -601,23 +799,58 @@ def review_repository(
     max_file_chars: int = DEFAULT_MAX_FILE_CHARS,
     max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS,
     workspace_client: WorkspaceClient | None = None,
+    on_status: Callable[[str], None] | None = None,
+    on_detail: Callable[[str], None] | None = None,
 ) -> ReviewArtifact:
-    """Generate a repository review document from a local or remote repository."""
+    """Generate a repository review document from a local or remote repository.
+
+    Args:
+        on_status: Optional callback invoked with a human-readable progress
+            message at each major step. Ignored when ``None``.
+        on_detail: Optional callback for sub-step detail messages (e.g. endpoint
+            probe results). Falls back to ``on_status`` when ``None``.
+    """
+    _status = on_status or (lambda _msg: None)
+    _detail = on_detail or on_status or (lambda _msg: None)
+
+    _status("Connecting to Databricks workspace...")
+    client = workspace_client or WorkspaceClient()
+    endpoint_name, fallbacks = select_review_endpoint(client, preferred_endpoint)
+
+    _status(f"Resolving repository source (endpoint: {endpoint_name})...")
     with _materialize_repository(source, working_directory) as resolved:
+
+        _status(f"Scanning files in {resolved.source_label}")
         snapshot = collect_repository_snapshot(
             resolved.root_path,
             source_label=resolved.source_label,
             max_file_chars=max_file_chars,
             max_total_chars=max_total_chars,
         )
+        _status(
+            f"Collected {len(snapshot.files)} files "
+            f"({snapshot.total_characters:,} chars), "
+            f"omitted {len(snapshot.omitted_files)}"
+        )
+        for line in _format_file_tree(snapshot.files):
+            _detail(line)
+        if snapshot.omitted_files:
+            _detail("")
+            _detail(f"Skipped {len(snapshot.omitted_files)} files:")
+            for f in snapshot.omitted_files:
+                _detail(f"  {f.path} ({f.reason})")
+
+        _status("Building review prompt...")
         prompt_text = build_review_prompt(snapshot)
         prompt_path, research_path = ensure_internal_reference_files(working_directory, prompt_text)
-        client = workspace_client or WorkspaceClient()
-        endpoint_name = select_review_endpoint(client, preferred_endpoint)
-        report_body = query_review_model(
+
+        _status(f"Sending to {endpoint_name} for review...")
+        report_body, endpoint_name = _query_with_fallback(
             client,
             endpoint_name=endpoint_name,
+            fallbacks=fallbacks,
             user_prompt=prompt_text,
+            on_detail=_detail,
         )
 
         destination = output_path or (working_directory / f"{resolved.repo_name}-adm-review.md")
@@ -636,6 +869,7 @@ def review_repository(
             ]
         )
         destination.write_text(header + report_body.strip() + "\n")
+        _status(f"Writing review to {destination.name}")
 
         return ReviewArtifact(
             repo_name=resolved.repo_name,
