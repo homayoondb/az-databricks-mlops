@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # End-to-End Tests for `as-databricks-mlops` in Notebook Context
+# MAGIC # End-to-End Tests for `az-databricks-mlops` in Notebook Context
 # MAGIC
 # MAGIC This notebook validates that the package works when pip-installed inside a
 # MAGIC Databricks workspace notebook. It tests:
@@ -24,11 +24,11 @@
 
 # COMMAND ----------
 
-import as_databricks_mlops
+import az_databricks_mlops
 
-print(f"Package version: {as_databricks_mlops.__version__}")
-assert hasattr(as_databricks_mlops, "review_repository"), "review_repository not exported"
-assert hasattr(as_databricks_mlops, "run_training_job"), "run_training_job not exported"
+print(f"Package version: {az_databricks_mlops.__version__}")
+assert hasattr(az_databricks_mlops, "review_repository"), "review_repository not exported"
+assert hasattr(az_databricks_mlops, "run_training_job"), "run_training_job not exported"
 print("PASS: Package imports and exports are correct")
 
 # COMMAND ----------
@@ -42,7 +42,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from as_databricks_mlops.review import collect_repository_snapshot
+from az_databricks_mlops.review import collect_repository_snapshot
 
 with tempfile.TemporaryDirectory(prefix="adm-test-") as tmp:
     tmp_path = Path(tmp)
@@ -77,7 +77,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from as_databricks_mlops.review import collect_repository_snapshot
+from az_databricks_mlops.review import collect_repository_snapshot
 
 # Clone a small repo to test git-based file iteration
 with tempfile.TemporaryDirectory(prefix="adm-clone-") as tmp:
@@ -117,7 +117,7 @@ print("PASS: Remote clone + snapshot works in notebook")
 import tempfile
 from pathlib import Path
 
-from as_databricks_mlops import review_repository
+from az_databricks_mlops import review_repository
 
 with tempfile.TemporaryDirectory(prefix="adm-review-") as tmp:
     tmp_path = Path(tmp)
@@ -172,7 +172,7 @@ job_name = dbutils.widgets.get("job_name").strip()
 if not job_name:
     print("SKIP: No job_name provided — skipping trigger test")
 else:
-    from as_databricks_mlops import run_training_job
+    from az_databricks_mlops import run_training_job
 
     try:
         run_training_job(job_name)

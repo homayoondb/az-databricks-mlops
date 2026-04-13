@@ -1,5 +1,5 @@
 {
-  "project": "as-databricks-mlops",
+  "project": "az-databricks-mlops",
   "branchName": "ralph/adm-e2e-docs-and-testing",
   "description": "End-to-end documentation, testing, and notebook compatibility for the adm CLI",
   "userStories": [
@@ -26,7 +26,7 @@
       "acceptanceCriteria": [
         "adm trigger section added to Commands in README",
         "Clearly states it re-runs an already-deployed job via SDK (no CLI needed, no redeploy)",
-        "Mentions notebook-native usage: from as_databricks_mlops import run_training_job",
+        "Mentions notebook-native usage: from az_databricks_mlops import run_training_job",
         "Shows the --target option",
         "Typecheck passes"
       ],
@@ -41,8 +41,8 @@
       "acceptanceCriteria": [
         "New Notebook Usage section added to README",
         "Shows pip install command from GitHub",
-        "Shows from as_databricks_mlops import run_training_job example with argument",
-        "Shows from as_databricks_mlops import review_repository example for document generation",
+        "Shows from az_databricks_mlops import run_training_job example with argument",
+        "Shows from az_databricks_mlops import review_repository example for document generation",
         "Notes which commands work in notebooks (trigger, document) vs which require local CLI (init, run)",
         "Typecheck passes"
       ],
@@ -56,7 +56,7 @@
       "description": "As a maintainer, I want the README to be accurate against the current CLI surface.",
       "acceptanceCriteria": [
         "All 7 commands listed in Commands section",
-        "Package version / naming references are accurate (as-databricks-mlops, adm)",
+        "Package version / naming references are accurate (az-databricks-mlops, adm)",
         "No dead references to removed features or wrong flag names",
         "Typecheck passes"
       ],

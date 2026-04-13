@@ -3,7 +3,7 @@
 import yaml
 import pytest
 
-from as_databricks_mlops.generator import ProjectConfig, find_notebooks, render_templates
+from az_databricks_mlops.generator import ProjectConfig, find_notebooks, render_templates
 
 
 @pytest.fixture

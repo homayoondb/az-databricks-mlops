@@ -9,15 +9,14 @@ import pytest
 from click.testing import CliRunner
 from databricks.sdk.errors import ResourceDoesNotExist
 
-from az_mlops.cli import cli as legacy_cli
-from as_databricks_mlops.cli import (
+from az_databricks_mlops.cli import (
     _detect_catalog_name,
     _resolve_profile_for_host,
     _validate_registry_schema,
     cli,
 )
-from as_databricks_mlops.trigger import run_training_job
-from as_databricks_mlops.review import (
+from az_databricks_mlops.trigger import run_training_job
+from az_databricks_mlops.review import (
     INTERNAL_DIR_NAME,
     REVIEW_SYSTEM_PROMPT,
     RepositorySnapshot,
@@ -36,12 +35,6 @@ def runner():
 
 def test_version(runner):
     result = runner.invoke(cli, ["--version"])
-    assert result.exit_code == 0
-    assert "0.2.0" in result.output
-
-
-def test_legacy_az_mlops_version(runner):
-    result = runner.invoke(legacy_cli, ["--version"])
     assert result.exit_code == 0
     assert "0.2.0" in result.output
 
@@ -641,7 +634,7 @@ def test_validate_registry_schema_fails_early(monkeypatch):
         def __init__(self, host: str, profile: str | None = None):
             self.schemas = FakeSchemas()
 
-    monkeypatch.setattr("as_databricks_mlops.cli.WorkspaceClient", FakeWorkspaceClient)
+    monkeypatch.setattr("az_databricks_mlops.cli.WorkspaceClient", FakeWorkspaceClient)
 
     bundle = {
         "variables": {
@@ -692,7 +685,7 @@ def test_document_command_uses_review_repository(runner, tmp_path, monkeypatch):
         captured.update(kwargs)
         return FakeArtifact()
 
-    monkeypatch.setattr("as_databricks_mlops.cli.review_repository", fake_review_repository)
+    monkeypatch.setattr("az_databricks_mlops.cli.review_repository", fake_review_repository)
 
     result = runner.invoke(
         cli,

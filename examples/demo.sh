@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demo: add MLOps to the messy-ml-project example
-# Run from the as-databricks-mlops repo root: bash examples/demo.sh
+# Run from the az-databricks-mlops repo root: bash examples/demo.sh
 
 set -e
 

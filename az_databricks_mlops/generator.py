@@ -57,7 +57,7 @@ def _output_path(template_name: str) -> str:
 def render_templates(config: ProjectConfig) -> dict[str, str]:
     """Render all templates and return {relative_path: content}."""
     env = Environment(
-        loader=PackageLoader("as_databricks_mlops", "templates"),
+        loader=PackageLoader("az_databricks_mlops", "templates"),
         autoescape=select_autoescape([]),
         keep_trailing_newline=True,
     )

@@ -1,8 +1,8 @@
-# as-databricks-mlops
+# az-databricks-mlops
 
 Lightweight MLOps scaffolding for Databricks projects. Adds production-grade MLOps to any ML project in ~10 files — no complex templates, no 20-question wizards, no code changes to your existing scripts.
 
-The published package name is `as-databricks-mlops`. The CLI command is `adm`.
+The published package name is `az-databricks-mlops`. The CLI command is `adm`.
 
 Built for AWS Databricks with Unity Catalog.
 
@@ -10,17 +10,17 @@ Built for AWS Databricks with Unity Catalog.
 
 Most ML teams have working models but no production pipeline. Setting up MLOps from scratch means figuring out Databricks Asset Bundles, model registration, validation, and deployment promotion — all from blank files.
 
-`as-databricks-mlops` does it in one command. You point it at your training script, answer a few prompts, and get a production-ready pipeline. **Your existing training code stays untouched** — the tool wraps it with automatic MLflow tracking, model registration, and validation.
+`az-databricks-mlops` does it in one command. You point it at your training script, answer a few prompts, and get a production-ready pipeline. **Your existing training code stays untouched** — the tool wraps it with automatic MLflow tracking, model registration, and validation.
 
 ## Installation
 
 ```bash
 # Install directly from GitHub (recommended)
-pip install git+https://github.com/<org>/as-databricks-mlops.git
+pip install git+https://github.com/<org>/az-databricks-mlops.git
 
 # Or clone and install locally
-git clone https://github.com/<org>/as-databricks-mlops.git
-pip install ./as-databricks-mlops
+git clone https://github.com/<org>/az-databricks-mlops.git
+pip install ./az-databricks-mlops
 ```
 
 ## The complete flow
@@ -309,13 +309,13 @@ Generates `mlops/dqx_checks.py` and `resources/dqx-job.yml`. When added at init 
 Install the package inside a Databricks notebook:
 
 ```python
-%pip install git+https://github.com/<org>/as-databricks-mlops.git
+%pip install git+https://github.com/<org>/az-databricks-mlops.git
 ```
 
 **Trigger a training job** (works with ambient workspace credentials):
 
 ```python
-from as_databricks_mlops import run_training_job
+from az_databricks_mlops import run_training_job
 
 run_training_job("dev-my-project-model-training-job")
 ```
@@ -323,7 +323,7 @@ run_training_job("dev-my-project-model-training-job")
 **Generate a repository review**:
 
 ```python
-from as_databricks_mlops import review_repository
+from az_databricks_mlops import review_repository
 
 # Review a repo cloned into the workspace
 artifact = review_repository(

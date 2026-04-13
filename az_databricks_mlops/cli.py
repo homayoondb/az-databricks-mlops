@@ -16,8 +16,8 @@ import yaml
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import PermissionDenied, ResourceAlreadyExists, ResourceDoesNotExist
 
-from as_databricks_mlops import __version__
-from as_databricks_mlops.generator import (
+from az_databricks_mlops import __version__
+from az_databricks_mlops.generator import (
     CORE_TEMPLATES,
     DQX_TEMPLATES,
     INFERENCE_TEMPLATES,
@@ -27,7 +27,7 @@ from as_databricks_mlops.generator import (
     render_templates,
     write_files,
 )
-from as_databricks_mlops.review import review_repository
+from az_databricks_mlops.review import review_repository
 
 
 DEFAULT_CONFIG_FILENAMES: tuple[str, ...] = (
@@ -787,7 +787,7 @@ def run(target: str) -> None:
     click.echo("Once complete, the model will be registered in Unity Catalog with the 'champion' alias.")
     click.echo()
     click.echo("  Tip: To retrigger from a notebook (no CLI needed):")
-    click.echo("    from as_databricks_mlops import run_training_job")
+    click.echo("    from az_databricks_mlops import run_training_job")
     click.echo(f'    run_training_job("{target}-{project_name}-model-training-job")')
     click.echo()
     click.echo("  No local terminal? Use the Databricks Web Terminal (DBR 15.1+) in the browser UI.")
@@ -814,13 +814,13 @@ def trigger(target: str) -> None:
 
     click.echo(f"Triggering job: {job_name}")
     try:
-        from as_databricks_mlops.trigger import run_training_job
+        from az_databricks_mlops.trigger import run_training_job
 
         run_training_job(job_name)
     except ImportError:
         raise click.ClickException(
             "databricks-sdk is required for `adm trigger`. "
-            "Install it: pip install 'as-databricks-mlops[sdk]'"
+            "Install it: pip install 'az-databricks-mlops[sdk]'"
         )
 
 

@@ -30,7 +30,7 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 **Acceptance Criteria:**
 - [ ] `adm trigger` section added to Commands in README
 - [ ] Clearly states it re-runs an already-deployed job via SDK (no CLI needed, no redeploy)
-- [ ] Mentions notebook-native usage: `from as_databricks_mlops import run_training_job`
+- [ ] Mentions notebook-native usage: `from az_databricks_mlops import run_training_job`
 - [ ] Shows the `--target` option
 
 ### US-003: README — Document programmatic API for notebooks
@@ -39,8 +39,8 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 **Acceptance Criteria:**
 - [ ] New "Notebook Usage" section added to README
 - [ ] Shows `pip install` command (from GitHub)
-- [ ] Shows `from as_databricks_mlops import run_training_job` example with argument
-- [ ] Shows `from as_databricks_mlops import review_repository` example for document generation
+- [ ] Shows `from az_databricks_mlops import run_training_job` example with argument
+- [ ] Shows `from az_databricks_mlops import review_repository` example for document generation
 - [ ] Notes which commands work in notebooks (trigger, document) vs. which require local CLI (init, run)
 
 ### US-004: README — Full audit for staleness
@@ -49,7 +49,7 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 **Acceptance Criteria:**
 - [ ] All 7 commands listed in Commands section
 - [ ] "The complete flow" diagram updated if `trigger` fits in there
-- [ ] Package version / naming references are accurate (`as-databricks-mlops`, `adm`)
+- [ ] Package version / naming references are accurate (`az-databricks-mlops`, `adm`)
 - [ ] No dead references to removed features or wrong flag names
 
 ### US-005: E2E test — `adm document` on local `examples/messy-ml-project`
@@ -89,7 +89,7 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 
 **Acceptance Criteria:**
 - [ ] Create a test notebook that: `%pip install git+<repo-url>`
-- [ ] Notebook imports `from as_databricks_mlops import review_repository`
+- [ ] Notebook imports `from az_databricks_mlops import review_repository`
 - [ ] Clones a small repo into `/tmp/` via `!git clone --depth 1 <url> /tmp/test-repo`
 - [ ] Calls `review_repository(source="/tmp/test-repo", output_path="/tmp/review-notebook.md")`
 - [ ] Review document is generated successfully
@@ -100,7 +100,7 @@ The `adm` CLI has grown to 7 commands (`init`, `new`, `run`, `trigger`, `clean`,
 
 **Acceptance Criteria:**
 - [ ] Prerequisite: a job is already deployed from US-007
-- [ ] Notebook imports `from as_databricks_mlops import run_training_job`
+- [ ] Notebook imports `from az_databricks_mlops import run_training_job`
 - [ ] Calls `run_training_job("<target>-<project>-model-training-job")`
 - [ ] Job is triggered successfully (prints run ID and monitor URL)
 - [ ] No import errors or SDK authentication issues
