@@ -1,0 +1,16 @@
+Agent project notes
+===================
+
+2024-12-15: omar started the agent, using openai directly
+2025-01-20: switched to databricks model serving endpoints
+2025-02-10: added tools (search, calculator) but search doesnt work yet
+2025-03-01: cleaned up agent.py, v1 was buggy (infinite recursion)
+2025-03-15: need to add evaluation before we deploy this to prod
+2025-04-01: still no eval... product wants this in prod by end of month
+
+TODO:
+- add proper evaluation (not just manual testing)
+- hook up vector search for RAG
+- add conversation memory
+- figure out how to deploy on databricks
+- set up monitoring

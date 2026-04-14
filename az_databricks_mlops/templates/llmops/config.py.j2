@@ -1,0 +1,17 @@
+"""Single source of truth for project LLMOps configuration."""
+
+# -- Model Registry (Unity Catalog) --
+MODEL_NAME = "{{ catalog_name }}.{{ schema_name }}.{{ project_name | replace('-', '_') }}"
+SCHEMA_NAME = "{{ schema_name }}"
+
+# -- MLflow Experiment --
+EXPERIMENT_BASE_NAME = "{{ project_name }}-experiment"
+
+# -- Agent Evaluation --
+# Name of the evaluation dataset table in Unity Catalog.
+# Create this table with columns: inputs (STRING), expected_response (STRING).
+EVAL_DATASET_TABLE = ""  # e.g. {{ catalog_name }}.{{ schema_name }}.agent_eval_dataset
+
+# -- Agent Serving --
+INPUT_TABLE = "{{ catalog_name }}.{{ schema_name }}.agent_input"
+OUTPUT_TABLE = "{{ catalog_name }}.{{ schema_name }}.agent_output"

@@ -1,0 +1,6 @@
+openai
+langchain
+# do we still need these? -sarah
+tiktoken
+chromadb
+pandas

@@ -19,6 +19,8 @@ from az_databricks_mlops.generator import (
     CORE_TEMPLATES,
     DQX_TEMPLATES,
     INFERENCE_TEMPLATES,
+    LLMOPS_SERVE_TEMPLATES,
+    LLMOPS_TEMPLATES,
     ProjectConfig,
     _output_path,
     find_notebooks,
@@ -41,6 +43,7 @@ class CliDefaults:
     """Resolved YAML defaults for interactive CLI commands."""
 
     project_name: str | None = None
+    project_type: str | None = None
     staging_url: str | None = None
     prod_url: str | None = None
     catalog_name: str | None = None
@@ -49,6 +52,8 @@ class CliDefaults:
     ignored_inference_notebook: str | None = None
     with_inference: bool | None = None
     with_dqx: bool | None = None
+    agent_script: str | None = None
+    with_serving: bool | None = None
 
 
 @click.group()
@@ -142,6 +147,23 @@ def _prompt_bool(label: str, configured_default: bool | None, fallback_default: 
         type=click.Choice(["y", "n"], case_sensitive=False),
     )
     return choice.lower() == "y"
+
+
+def _prompt_project_type(configured_default: str | None) -> str:
+    """Prompt the user to choose between classic ML and LLMOps scaffolding."""
+    click.echo()
+    click.echo("  Project type:")
+    click.echo("    1. classic_ml — Train → Validate → Deploy (sklearn, XGBoost, PyTorch, etc.)")
+    click.echo("    2. llmops     — AgentDev → AgentEval → AgentDeploy (LLM / RAG / Agent)")
+    click.echo()
+    default = configured_default or "classic_ml"
+    while True:
+        choice = click.prompt("  Select project type", default=default)
+        if choice in ("1", "classic_ml"):
+            return "classic_ml"
+        if choice in ("2", "llmops"):
+            return "llmops"
+        click.echo("  Enter 1, 2, 'classic_ml', or 'llmops'.", err=True)
 
 
 def _warn_ignored_inference_notebook(source: str) -> None:
@@ -279,6 +301,18 @@ def _load_cli_defaults(directory: Path, config_path: Path | None) -> tuple[CliDe
             options_cfg.get("with_dqx", parsed.get("with_dqx")),
             "options.with_dqx",
         ),
+        project_type=_as_optional_str(
+            parsed.get("project_type", options_cfg.get("project_type")),
+            "project_type",
+        ),
+        agent_script=_as_optional_str(
+            training_cfg.get("agent_script", parsed.get("agent_script")),
+            "training.agent_script",
+        ),
+        with_serving=_as_optional_bool(
+            training_cfg.get("with_serving", parsed.get("with_serving")),
+            "training.with_serving",
+        ),
     )
     return defaults, resolved_path
 
@@ -361,6 +395,12 @@ def _detect_schema_name(directory: Path) -> str:
     help="Name for the ML project.",
 )
 @click.option(
+    "--project-type",
+    type=click.Choice(["classic_ml", "llmops"]),
+    default=None,
+    help="Project type: classic_ml (Train→Validate→Deploy) or llmops (AgentDev→AgentEval→AgentDeploy).",
+)
+@click.option(
     "--staging-url",
     default=None,
     help="Databricks staging workspace URL.",
@@ -411,6 +451,7 @@ def _detect_schema_name(directory: Path) -> str:
 def init(
     config_path: Path | None,
     project_name: str | None,
+    project_type: str | None,
     staging_url: str | None,
     prod_url: str | None,
     catalog_name: str | None,
@@ -431,6 +472,11 @@ def init(
     if project_name is None:
         project_name = _prompt_text("Project name", defaults.project_name, cwd.name)
 
+    if project_type is None:
+        project_type = _prompt_project_type(defaults.project_type)
+
+    is_llmops = project_type == "llmops"
+
     if staging_url is None:
         detected = _detect_staging_url(cwd) or None
         staging_url = _prompt_text("Staging workspace URL", defaults.staging_url, detected)
@@ -447,26 +493,49 @@ def init(
         detected = _detect_schema_name(cwd) or None
         schema_name = _prompt_text("Unity Catalog schema (database)", defaults.schema_name, detected)
 
-    if training_notebook is None:
-        training_notebook = _prompt_notebook(
-            "Training notebook/script",
-            cwd,
-            default=defaults.training_notebook or "train.py",
-        )
+    # Script/notebook prompt depends on project type.
+    agent_script = "agent.py"
+    if is_llmops:
+        if training_notebook is None:
+            agent_script = _prompt_notebook(
+                "Agent script (must expose `agent` or `predict` callable)",
+                cwd,
+                default=defaults.agent_script or "agent.py",
+            )
+        else:
+            agent_script = training_notebook
+            training_notebook = "train.py"  # leave default for classic fields
+    else:
+        if training_notebook is None:
+            training_notebook = _prompt_notebook(
+                "Training notebook/script",
+                cwd,
+                default=defaults.training_notebook or "train.py",
+            )
 
     if inference_notebook is not None:
         _warn_ignored_inference_notebook("--inference-notebook")
     elif defaults.ignored_inference_notebook is not None:
         _warn_ignored_inference_notebook("training.inference_notebook in adm.yml")
 
-    if with_inference is None:
-        with_inference = _prompt_bool("  Include batch inference job?", defaults.with_inference, True)
-
-    if with_dqx is None:
-        with_dqx = defaults.with_dqx if defaults.with_dqx is not None else False
+    # Optional components depend on project type.
+    with_serving = True
+    if is_llmops:
+        if with_inference is None:
+            with_serving = _prompt_bool("  Include batch agent serving job?", defaults.with_serving, True)
+        else:
+            with_serving = with_inference
+        with_inference = False
+        with_dqx = False
+    else:
+        if with_inference is None:
+            with_inference = _prompt_bool("  Include batch inference job?", defaults.with_inference, True)
+        if with_dqx is None:
+            with_dqx = defaults.with_dqx if defaults.with_dqx is not None else False
 
     config = ProjectConfig(
         project_name=project_name,
+        project_type=project_type,
         staging_workspace_url=_sanitize_url(staging_url),
         catalog_name=catalog_name,
         schema_name=schema_name,
@@ -474,6 +543,8 @@ def init(
         training_notebook=training_notebook,
         with_inference=with_inference,
         with_dqx=with_dqx,
+        agent_script=agent_script,
+        with_serving=with_serving,
     )
     rendered = render_templates(config)
     try:
@@ -493,8 +564,9 @@ def init(
 
     if valid:
         click.echo()
+        run_label = "Run the agent pipeline now?" if is_llmops else "Run the training job now?"
         try:
-            if click.confirm("  Run the training job now?", default=False):
+            if click.confirm(f"  {run_label}", default=False):
                 ctx = click.get_current_context()
                 ctx.invoke(run)
         except click.Abort:
@@ -509,6 +581,12 @@ def init(
     type=click.Path(path_type=Path, dir_okay=False),
     default=None,
     help="Path to an adm YAML defaults file. Auto-discovers adm.yml if omitted.",
+)
+@click.option(
+    "--project-type",
+    type=click.Choice(["classic_ml", "llmops"]),
+    default=None,
+    help="Project type: classic_ml or llmops.",
 )
 @click.option(
     "--staging-url",
@@ -534,16 +612,17 @@ def init(
     "--inference/--skip-inference",
     "with_inference",
     default=None,
-    help="Generate the batch inference job scaffold.",
+    help="Generate the batch inference/serving job scaffold.",
 )
 @click.option(
     "--with-dqx/--without-dqx",
     default=None,
-    help="Include the optional DQX data quality scaffold.",
+    help="Include the optional DQX data quality scaffold (classic ML only).",
 )
 def new(
     project_name: str | None,
     config_path: Path | None,
+    project_type: str | None,
     staging_url: str | None,
     prod_url: str | None,
     catalog_name: str | None,
@@ -551,7 +630,7 @@ def new(
     with_inference: bool | None,
     with_dqx: bool | None,
 ) -> None:
-    """Create a new ML project with MLOps scaffolding."""
+    """Create a new project with MLOps or LLMOps scaffolding."""
     cwd = Path.cwd()
     defaults, defaults_path = _load_cli_defaults(cwd, config_path)
     if defaults_path is not None:
@@ -559,6 +638,11 @@ def new(
 
     if project_name is None:
         project_name = _prompt_text("Project name", defaults.project_name)
+
+    if project_type is None:
+        project_type = _prompt_project_type(defaults.project_type)
+
+    is_llmops = project_type == "llmops"
 
     if staging_url is None:
         staging_url = _prompt_text("Staging workspace URL", defaults.staging_url)
@@ -572,11 +656,19 @@ def new(
     if schema_name is None:
         schema_name = _prompt_text("Unity Catalog schema (database)", defaults.schema_name)
 
-    if with_inference is None:
-        with_inference = _prompt_bool("Include batch inference job?", defaults.with_inference, True)
-
-    if with_dqx is None:
-        with_dqx = defaults.with_dqx if defaults.with_dqx is not None else False
+    with_serving = True
+    if is_llmops:
+        if with_inference is not None:
+            with_serving = with_inference
+        else:
+            with_serving = _prompt_bool("Include batch agent serving job?", defaults.with_serving, True)
+        with_inference = False
+        with_dqx = False
+    else:
+        if with_inference is None:
+            with_inference = _prompt_bool("Include batch inference job?", defaults.with_inference, True)
+        if with_dqx is None:
+            with_dqx = defaults.with_dqx if defaults.with_dqx is not None else False
 
     project_dir = Path.cwd() / project_name
     if project_dir.exists():
@@ -586,12 +678,14 @@ def new(
 
     config = ProjectConfig(
         project_name=project_name,
+        project_type=project_type,
         staging_workspace_url=_sanitize_url(staging_url),
         catalog_name=catalog_name,
         schema_name=schema_name,
         prod_workspace_url=_sanitize_url(prod_url) if prod_url else "",
         with_inference=with_inference,
         with_dqx=with_dqx,
+        with_serving=with_serving,
     )
     rendered = render_templates(config)
     created = write_files(project_dir, rendered)
@@ -607,7 +701,10 @@ def clean() -> None:
     """Remove all adm generated files from the current directory."""
     cwd = Path.cwd()
 
-    all_templates = list(CORE_TEMPLATES) + list(INFERENCE_TEMPLATES) + list(DQX_TEMPLATES)
+    all_templates = (
+        list(CORE_TEMPLATES) + list(INFERENCE_TEMPLATES) + list(DQX_TEMPLATES)
+        + list(LLMOPS_TEMPLATES) + list(LLMOPS_SERVE_TEMPLATES)
+    )
     generated_files = [_output_path(t) for t in all_templates]
 
     removed: list[str] = []
@@ -618,7 +715,7 @@ def clean() -> None:
             removed.append(rel_path)
 
     # Clean up empty directories left behind
-    for dir_name in ["mlops", "resources", "notebooks"]:
+    for dir_name in ["mlops", "llmops", "resources", "notebooks"]:
         d = cwd / dir_name
         if d.exists() and not any(d.iterdir()):
             d.rmdir()
@@ -788,17 +885,29 @@ def run(target: str) -> None:
     except Exception as e:
         click.echo(f"  (Could not resolve experiment URL: {e})", err=True)
 
-    # 2. Start training job — capture output to extract the run URL
-    click.echo("Starting training job...")
+    # 2. Detect project type and select job key.
+    is_llmops = (cwd / "llmops" / "config.py").exists()
+    if is_llmops:
+        job_key = "agent_pipeline_job"
+        job_suffix = "agent-pipeline-job"
+        job_label = "agent pipeline"
+        pipeline_desc = "AgentDev → AgentEval → AgentDeploy"
+    else:
+        job_key = "model_training_job"
+        job_suffix = "model-training-job"
+        job_label = "training"
+        pipeline_desc = "Train → Validate → Deploy"
+
+    click.echo(f"Starting {job_label} job...")
     run_proc = subprocess.run(
-        ["databricks", "bundle", "run", "model_training_job", "-t", target, "--no-wait"],
+        ["databricks", "bundle", "run", job_key, "-t", target, "--no-wait"],
         cwd=cwd,
         capture_output=True,
         text=True,
     )
     if run_proc.returncode != 0:
         click.echo(run_proc.stderr or run_proc.stdout)
-        raise click.ClickException("Failed to start training job (see output above).")
+        raise click.ClickException(f"Failed to start {job_label} job (see output above).")
 
     # CLI outputs "Run URL: https://..." as plain text
     run_page_url = ""
@@ -807,19 +916,19 @@ def run(target: str) -> None:
         run_page_url = match.group(1)
 
     click.echo()
-    click.echo("Training job started.")
+    click.echo(f"{job_label.capitalize()} job started.")
     click.echo()
     if run_page_url:
         click.echo(f"  Job run:    {run_page_url}")
     if experiment_url:
         click.echo(f"  Experiment: {experiment_url}")
     click.echo()
-    click.echo("The job runs Train → Validate → Deploy in sequence.")
+    click.echo(f"The job runs {pipeline_desc} in sequence.")
     click.echo("Once complete, the model will be registered in Unity Catalog with the 'champion' alias.")
     click.echo()
     click.echo("  Tip: To retrigger from a notebook (no CLI needed):")
     click.echo("    from az_databricks_mlops import run_training_job")
-    click.echo(f'    run_training_job("{target}-{project_name}-model-training-job")')
+    click.echo(f'    run_training_job("{target}-{project_name}-{job_suffix}")')
     click.echo()
     click.echo("  No local terminal? Use the Databricks Web Terminal (DBR 15.1+) in the browser UI.")
 
@@ -841,7 +950,10 @@ def trigger(target: str) -> None:
 
     bundle = yaml.safe_load(databricks_yml.read_text())
     project_name = bundle.get("bundle", {}).get("name", cwd.name)
-    job_name = f"{target}-{project_name}-model-training-job"
+
+    is_llmops = (cwd / "llmops" / "config.py").exists()
+    job_suffix = "agent-pipeline-job" if is_llmops else "model-training-job"
+    job_name = f"{target}-{project_name}-{job_suffix}"
 
     click.echo(f"Triggering job: {job_name}")
     try:

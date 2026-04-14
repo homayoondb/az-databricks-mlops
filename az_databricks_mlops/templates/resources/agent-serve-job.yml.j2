@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    agent_serve_job:
+      name: ${bundle.target}-{{ project_name }}-agent-serve-job
+
+      environments:
+        - environment_key: llmops_env
+          spec:
+            client: "1"
+            dependencies:
+              - mlflow>=3.0
+
+      tasks:
+        - task_key: agent_serve
+          environment_key: llmops_env
+          notebook_task:
+            notebook_path: ../llmops/run_agent_serve.py
+            base_parameters:
+              env: ${bundle.target}
+              input_table_name: ${var.catalog_name}.${var.schema_name}.agent_input
+              output_table_name: ${var.catalog_name}.${var.schema_name}.agent_output
+              model_name: ${var.catalog_name}.${var.schema_name}.${var.model_name}
+
+      schedule:
+        quartz_cron_expression: "0 0 11 * * ?"
+        timezone_id: UTC
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

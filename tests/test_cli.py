@@ -45,6 +45,8 @@ def test_new_creates_project(runner, tmp_path):
         cli,
         [
             "new",
+
+            "--project-type", "classic_ml",
             "my_test_project",
             "--staging-url",
             "https://staging.cloud.databricks.com",
@@ -83,6 +85,8 @@ def test_new_with_dqx(runner, tmp_path):
         cli,
         [
             "new",
+
+            "--project-type", "classic_ml",
             "dqx_project",
             "--staging-url",
             "https://staging.cloud.databricks.com",
@@ -108,6 +112,8 @@ def test_new_skip_inference(runner, tmp_path):
         cli,
         [
             "new",
+
+            "--project-type", "classic_ml",
             "no_inf_project",
             "--staging-url",
             "https://staging.cloud.databricks.com",
@@ -133,6 +139,8 @@ def test_new_without_prod_url(runner, tmp_path):
         cli,
         [
             "new",
+
+            "--project-type", "classic_ml",
             "staging_only",
             "--staging-url",
             "https://staging.cloud.databricks.com",
@@ -159,6 +167,8 @@ def test_new_fails_if_dir_exists(runner, tmp_path):
         cli,
         [
             "new",
+
+            "--project-type", "classic_ml",
             "existing_project",
             "--staging-url",
             "https://staging.cloud.databricks.com",
@@ -180,6 +190,8 @@ def test_init_creates_files_in_cwd(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name",
             "init_project",
             "--staging-url",
@@ -205,6 +217,8 @@ def test_init_refuses_overwrite_by_default(runner, tmp_path):
     os.chdir(tmp_path)
     args = [
         "init",
+
+        "--project-type", "classic_ml",
         "--project-name", "p",
         "--staging-url", "https://s.com",
         "--prod-url", "https://p.com",
@@ -224,6 +238,8 @@ def test_init_overwrite_flag(runner, tmp_path):
     os.chdir(tmp_path)
     args = [
         "init",
+
+        "--project-type", "classic_ml",
         "--project-name", "p",
         "--staging-url", "https://s.com",
         "--prod-url", "https://p.com",
@@ -257,7 +273,7 @@ options:
     (tmp_path / "notebooks").mkdir()
     (tmp_path / "notebooks" / "train.py").write_text("# training")
 
-    result = runner.invoke(cli, ["init"], input="\n\n\n\n\n")
+    result = runner.invoke(cli, ["init"], input="\n\n\n\n\n\n")
     assert result.exit_code == 0, result.output
     assert "Using defaults from adm.yml" in result.output
 
@@ -284,7 +300,7 @@ training:
     )
     (tmp_path / "train.py").write_text("# training")
 
-    result = runner.invoke(cli, ["init"], input="\n\n\n\n\ny\nn\n")
+    result = runner.invoke(cli, ["init"], input="\n\n\n\n\n\ny\nn\n")
     assert result.exit_code == 0, result.output
     assert "ignoring training.inference_notebook in adm.yml" in result.output
     assert "Inference notebook/script" not in result.output
@@ -309,6 +325,8 @@ training:
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--staging-url",
             "https://flag.example.com",
             "--catalog-name",
@@ -333,6 +351,7 @@ def test_init_uses_built_in_prompt_defaults_without_adm_yml(runner, tmp_path):
         ["init"],
         input=(
             "plain_project\n"
+            "classic_ml\n"
             "https://staging.example.com\n"
             "\n"
             "plain_catalog\n"
@@ -344,6 +363,7 @@ def test_init_uses_built_in_prompt_defaults_without_adm_yml(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert f"Project name [{tmp_path.name}]" in result.output
+    assert "Project type:" in result.output
     assert "Training notebook/script (number or path) [train.py]" in result.output
     assert "Include batch inference job? [Y/n]" in result.output
     assert "Inference notebook/script" not in result.output
@@ -382,7 +402,7 @@ variables:
     result = runner.invoke(
         cli,
         ["init", "--overwrite"],
-        input="\n\n\n\n\nn\n",
+        input="\n\n\n\n\n\nn\n",
     )
     assert result.exit_code == 0, result.output
     assert "Staging workspace URL [https://staging.from.yaml]" in result.output
@@ -400,6 +420,8 @@ def test_init_ignores_legacy_inference_notebook_flag(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name",
             "reprompt_project",
             "--staging-url",
@@ -416,7 +438,7 @@ def test_init_ignores_legacy_inference_notebook_flag(runner, tmp_path):
             "predict.py",
             "--overwrite",
         ],
-        input="y\nn\n",
+        input="\ny\nn\n",
     )
     assert result.exit_code == 0, result.output
     assert "ignoring --inference-notebook" in result.output
@@ -437,7 +459,7 @@ training:
   skip_inference: true
 """.strip()
     )
-    result = runner.invoke(cli, ["new"], input="\n\n\n\n\n\n")
+    result = runner.invoke(cli, ["new"], input="\n\n\n\n\n\n\n")
     assert result.exit_code == 0, result.output
     assert (tmp_path / "yaml_new_project" / "databricks.yml").exists()
     assert not (tmp_path / "yaml_new_project" / "resources" / "inference-job.yml").exists()
@@ -460,7 +482,7 @@ training:
     (child / "train.py").write_text("# training")
     os.chdir(child)
 
-    result = runner.invoke(cli, ["init", "--project-name", "nested_project"], input="\n\n\n\n")
+    result = runner.invoke(cli, ["init", "--project-name", "nested_project"], input="\n\n\n\n\n")
     assert result.exit_code == 0, result.output
     assert "Using defaults from" in result.output
     assert "staging.from.parent" in (child / "databricks.yml").read_text()
@@ -472,6 +494,8 @@ def test_add_dqx_to_existing_project(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name", "dqx_test",
             "--staging-url", "https://staging.example.com",
             "--prod-url", "https://prod.example.com",
@@ -493,6 +517,8 @@ def test_init_no_validate_skips_bundle_validate(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name", "noval_project",
             "--staging-url", "https://staging.cloud.databricks.com",
             "--catalog-name", "cat",
@@ -521,6 +547,8 @@ def test_clean_removes_generated_files(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name", "clean_test",
             "--staging-url", "https://staging.example.com",
             "--prod-url", "",
@@ -563,6 +591,8 @@ def test_clean_preserves_user_files(runner, tmp_path):
         cli,
         [
             "init",
+
+            "--project-type", "classic_ml",
             "--project-name", "preserve_test",
             "--staging-url", "https://staging.example.com",
             "--prod-url", "",
@@ -1040,3 +1070,104 @@ def test_run_training_job_multiple_match_raises(monkeypatch):
     monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: FakeClient())
     with pytest.raises(ValueError, match="Multiple jobs found"):
         run_training_job("dev-myproj-model-training-job")
+
+
+# --- LLMOps CLI tests ---
+
+
+def test_new_creates_llmops_project(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "new",
+            "--project-type", "llmops",
+            "my_agent",
+            "--staging-url", "https://staging.cloud.databricks.com",
+            "--prod-url", "https://prod.cloud.databricks.com",
+            "--catalog-name", "my_catalog",
+            "--schema-name", "my_schema",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    project_dir = tmp_path / "my_agent"
+    assert (project_dir / "llmops" / "config.py").exists()
+    assert (project_dir / "llmops" / "run_agent_dev.py").exists()
+    assert (project_dir / "llmops" / "scorers.py").exists()
+    assert (project_dir / "llmops" / "run_agent_eval.py").exists()
+    assert (project_dir / "llmops" / "deploy.py").exists()
+    assert (project_dir / "resources" / "agent-job.yml").exists()
+    # Classic ML files should NOT exist
+    assert not (project_dir / "mlops").exists()
+    assert not (project_dir / "resources" / "training-job.yml").exists()
+
+
+def test_init_creates_llmops_files_in_cwd(runner, tmp_path):
+    os.chdir(tmp_path)
+    (tmp_path / "agent.py").write_text("agent = lambda x: 'hello'")
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--project-type", "llmops",
+            "--project-name", "my_agent",
+            "--staging-url", "https://staging.cloud.databricks.com",
+            "--prod-url", "",
+            "--catalog-name", "my_catalog",
+            "--schema-name", "my_schema",
+            "--training-notebook", "agent.py",
+            "--skip-inference",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "llmops" / "config.py").exists()
+    assert (tmp_path / "llmops" / "scorers.py").exists()
+    assert (tmp_path / "resources" / "agent-job.yml").exists()
+    assert not (tmp_path / "mlops").exists()
+
+
+def test_clean_removes_llmops_files(runner, tmp_path):
+    os.chdir(tmp_path)
+    # Generate llmops files
+    runner.invoke(
+        cli,
+        [
+            "new",
+            "--project-type", "llmops",
+            "clean_agent",
+            "--staging-url", "https://staging.cloud.databricks.com",
+            "--prod-url", "",
+            "--catalog-name", "c",
+            "--schema-name", "s",
+        ],
+    )
+    project_dir = tmp_path / "clean_agent"
+    assert (project_dir / "llmops" / "config.py").exists()
+
+    os.chdir(project_dir)
+    result = runner.invoke(cli, ["clean"])
+    assert result.exit_code == 0, result.output
+    assert "Cleaned" in result.output
+    assert not (project_dir / "llmops" / "config.py").exists()
+    assert not (project_dir / "resources" / "agent-job.yml").exists()
+
+
+def test_new_default_is_classic_ml(runner, tmp_path):
+    os.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "new",
+            "--project-type", "classic_ml",
+            "default_project",
+            "--staging-url", "https://staging.cloud.databricks.com",
+            "--prod-url", "",
+            "--catalog-name", "c",
+            "--schema-name", "s",
+            "--skip-inference",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    project_dir = tmp_path / "default_project"
+    assert (project_dir / "mlops" / "config.py").exists()
+    assert not (project_dir / "llmops").exists()

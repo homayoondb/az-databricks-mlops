@@ -1,0 +1,74 @@
+# Databricks notebook source
+"""Run the full LLMOps agent pipeline interactively.
+
+Uses dbutils.notebook.run() to call the three LLMOps notebooks in sequence:
+  AgentDev → AgentEval → AgentDeploy
+
+Useful for interactive development and debugging.
+"""
+
+# COMMAND ----------
+
+dbutils.widgets.text("env", "dev")
+dbutils.widgets.text("eval_dataset", "")
+
+env = dbutils.widgets.get("env")
+eval_dataset = dbutils.widgets.get("eval_dataset")
+
+project_name = "messy-agent-project"
+catalog_name = "us_comm_lakehouse_dev"
+schema_name = "az_brand_assistant"
+model_name_slug = project_name.replace("-", "_")
+
+experiment_name = f"/Shared/az-databricks-mlops/{env}-{project_name}-experiment"
+model_name = f"{catalog_name}.{schema_name}.{model_name_slug}"
+
+print(f"env:             {env}")
+print(f"experiment_name: {experiment_name}")
+print(f"model_name:      {model_name}")
+
+# COMMAND ----------
+
+# Stage 1: Agent Development (log + register)
+print("=" * 60)
+print("Stage 1/3: Agent Development")
+print("=" * 60)
+dbutils.notebook.run(
+    "../llmops/run_agent_dev",
+    3600,
+    {"env": env, "experiment_name": experiment_name, "model_name": model_name},
+)
+print("Agent registered.")
+
+# COMMAND ----------
+
+# Stage 2: Agent Evaluation
+print("=" * 60)
+print("Stage 2/3: Agent Evaluation")
+print("=" * 60)
+dbutils.notebook.run(
+    "../llmops/run_agent_eval",
+    3600,
+    {
+        "env": env,
+        "experiment_name": experiment_name,
+        "model_name": model_name,
+        "run_mode": "dry_run",
+        "eval_dataset": eval_dataset,
+    },
+)
+print("Evaluation complete.")
+
+# COMMAND ----------
+
+# Stage 3: Agent Deployment
+print("=" * 60)
+print("Stage 3/3: Agent Deployment")
+print("=" * 60)
+dbutils.notebook.run(
+    "../llmops/run_agent_deploy",
+    3600,
+    {"env": env, "model_name": model_name},
+)
+print("Deployment complete.")
+print(f"Agent '{model_name}' is now registered with the 'champion' alias.")

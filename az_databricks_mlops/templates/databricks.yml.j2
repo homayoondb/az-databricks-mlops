@@ -19,18 +19,29 @@ variables:
 
 sync:
   include:
+{%- if project_type == "llmops" %}
+    - "llmops/**"
+{%- else %}
     - "mlops/**"
+{%- endif %}
     - "**/*.py"
     - "**/*.ipynb"
     - "data/**"
 
 include:
+{%- if project_type == "llmops" %}
+  - ./resources/agent-job.yml
+{%- if with_serving %}
+  - ./resources/agent-serve-job.yml
+{%- endif %}
+{%- else %}
   - ./resources/training-job.yml
 {%- if with_inference %}
   - ./resources/inference-job.yml
 {%- endif %}
 {%- if with_dqx %}
   - ./resources/dqx-job.yml
+{%- endif %}
 {%- endif %}
 
 targets:

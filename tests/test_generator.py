@@ -289,3 +289,137 @@ def test_training_job_has_dataset_table_parameter(config):
     content = rendered["resources/training-job.yml"]
 
     assert "dataset_table" in content
+
+
+# --- LLMOps template tests ---
+
+
+@pytest.fixture
+def llmops_config():
+    return ProjectConfig(
+        project_name="test_agent",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        prod_workspace_url="https://prod.cloud.databricks.com",
+        project_type="llmops",
+        agent_script="agent.py",
+    )
+
+
+@pytest.fixture
+def llmops_config_no_serve():
+    return ProjectConfig(
+        project_name="test_agent",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        project_type="llmops",
+        agent_script="agent.py",
+        with_serving=False,
+    )
+
+
+def test_llmops_templates_rendered(llmops_config):
+    rendered = render_templates(llmops_config)
+    expected = [
+        "llmops/__init__.py",
+        "llmops/config.py",
+        "llmops/run_agent_dev.py",
+        "llmops/scorers.py",
+        "llmops/run_agent_eval.py",
+        "llmops/deploy.py",
+        "llmops/run_agent_deploy.py",
+        "notebooks/run_agent_pipeline.py",
+        "resources/agent-job.yml",
+        "resources/agent-serve-job.yml",
+        "llmops/run_agent_serve.py",
+    ]
+    for f in expected:
+        assert f in rendered, f"Missing LLMOps file: {f}"
+
+
+def test_llmops_no_classic_templates(llmops_config):
+    rendered = render_templates(llmops_config)
+    assert "mlops/run_training.py" not in rendered
+    assert "resources/training-job.yml" not in rendered
+    assert "mlops/validation.py" not in rendered
+
+
+def test_llmops_databricks_yml_includes_agent_job(llmops_config):
+    rendered = render_templates(llmops_config)
+    bundle = yaml.safe_load(rendered["databricks.yml"])
+    includes = bundle.get("include", [])
+    assert "./resources/agent-job.yml" in includes
+    assert "./resources/training-job.yml" not in includes
+
+
+def test_llmops_databricks_yml_has_llmops_sync(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = rendered["databricks.yml"]
+    assert "llmops/**" in content
+    assert "mlops/**" not in content
+
+
+def test_llmops_serve_excluded_when_skipped(llmops_config_no_serve):
+    rendered = render_templates(llmops_config_no_serve)
+    assert "resources/agent-serve-job.yml" not in rendered
+    assert "llmops/run_agent_serve.py" not in rendered
+
+
+def test_llmops_serve_included_by_default(llmops_config):
+    rendered = render_templates(llmops_config)
+    assert "resources/agent-serve-job.yml" in rendered
+    assert "llmops/run_agent_serve.py" in rendered
+
+
+def test_llmops_run_agent_dev_references_user_script(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = rendered["llmops/run_agent_dev.py"]
+    assert "agent.py" in content
+    assert "mlflow.tracing" in content
+    assert "mlflow.pyfunc.log_model" in content
+
+
+def test_llmops_scorers_has_scorer_functions(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = rendered["llmops/scorers.py"]
+    assert "@scorer" in content
+    assert "get_scorers" in content
+    assert "response_not_empty" in content
+
+
+def test_llmops_run_agent_eval_uses_genai_evaluate(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = rendered["llmops/run_agent_eval.py"]
+    assert "mlflow.genai.evaluate" in content
+    assert "get_scorers" in content
+
+
+def test_llmops_agent_job_has_three_tasks(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = yaml.safe_load(rendered["resources/agent-job.yml"])
+    tasks = content["resources"]["jobs"]["agent_pipeline_job"]["tasks"]
+    task_keys = [t["task_key"] for t in tasks]
+    assert task_keys == ["AgentDev", "AgentEval", "AgentDeploy"]
+
+
+def test_llmops_deploy_has_promotion_logic(llmops_config):
+    rendered = render_templates(llmops_config)
+    content = rendered["llmops/deploy.py"]
+    assert "champion" in content
+    assert "challenger" in content
+    assert "promote_model" in content
+
+
+def test_classic_ml_unchanged_with_project_type():
+    config_explicit = ProjectConfig(
+        project_name="test_project",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        training_notebook="train.py",
+        project_type="classic_ml",
+    )
+    config_default = ProjectConfig(
+        project_name="test_project",
+        staging_workspace_url="https://staging.cloud.databricks.com",
+        training_notebook="train.py",
+    )
+    rendered_explicit = render_templates(config_explicit)
+    rendered_default = render_templates(config_default)
+    assert set(rendered_explicit.keys()) == set(rendered_default.keys())

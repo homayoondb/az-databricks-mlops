@@ -1,0 +1,53 @@
+resources:
+  jobs:
+    agent_pipeline_job:
+      name: ${bundle.target}-{{ project_name }}-agent-pipeline-job
+
+      environments:
+        - environment_key: llmops_env
+          spec:
+            client: "1"
+            dependencies:
+              - mlflow>=3.0
+              - databricks-sdk>=0.20
+
+      tasks:
+        - task_key: AgentDev
+          environment_key: llmops_env
+          notebook_task:
+            notebook_path: ../llmops/run_agent_dev.py
+            base_parameters:
+              env: ${bundle.target}
+              experiment_name: ${var.experiment_name}
+              model_name: ${var.catalog_name}.${var.schema_name}.${var.model_name}
+
+        - task_key: AgentEval
+          environment_key: llmops_env
+          depends_on:
+            - task_key: AgentDev
+          notebook_task:
+            notebook_path: ../llmops/run_agent_eval.py
+            base_parameters:
+              env: ${bundle.target}
+              experiment_name: ${var.experiment_name}
+              model_name: ${var.catalog_name}.${var.schema_name}.${var.model_name}
+              run_mode: dry_run
+              eval_dataset: ""
+
+        - task_key: AgentDeploy
+          environment_key: llmops_env
+          depends_on:
+            - task_key: AgentEval
+          notebook_task:
+            notebook_path: ../llmops/run_agent_deploy.py
+            base_parameters:
+              env: ${bundle.target}
+              model_name: ${var.catalog_name}.${var.schema_name}.${var.model_name}
+
+      schedule:
+        quartz_cron_expression: "0 0 9 * * ?"
+        timezone_id: UTC
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

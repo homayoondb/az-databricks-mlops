@@ -3,9 +3,16 @@
 Lightweight MLOps toolkit for Databricks projects. Two main capabilities:
 
 1. **`adm document`** — Review any repository (classic ML, LLM, RAG, agentic, or hybrid) and generate a prioritized MLOps/LLMOps improvement report using Databricks Model Serving
-2. **`adm init`** — Add production-grade MLOps scaffolding to a **classic ML** project in ~10 files — no code changes to your existing scripts
+2. **`adm init`** — Add production-grade scaffolding to any ML or LLM project — choose **classic ML** or **LLMOps** during setup
 
-> **Scope note:** `adm document` reviews _any_ repo type against both MLOps and LLMOps best practices. `adm init` scaffolding currently targets classic ML workflows (scikit-learn, XGBoost, PyTorch, etc.) with MLflow autolog, Unity Catalog model registration, and alias-based promotion. Agentic/LLM scaffolding (MLflow 3 tracing, `mlflow.genai.evaluate()`, scorers) is not yet supported.
+During `adm init`, you pick a project type:
+
+| Project Type | Pipeline | Use For |
+|---|---|---|
+| `classic_ml` | Train → Validate → Deploy | scikit-learn, XGBoost, PyTorch, etc. |
+| `llmops` | AgentDev → AgentEval → AgentDeploy | LLM agents, RAG apps, any framework |
+
+Both use Unity Catalog model registration and alias-based promotion (challenger → champion). The LLMOps scaffold is **framework-agnostic** — your agent script just needs to expose an `agent` callable or `predict` function.
 
 The published package name is `az-databricks-mlops`. The CLI command is `adm`.
 
@@ -102,9 +109,7 @@ If you don't specify `--endpoint`, the tool picks the best available Databricks 
 
 ---
 
-## Classic ML Scaffolding (`adm init` / `adm run`)
-
-> Currently supports classic ML workflows only (scikit-learn, XGBoost, PyTorch, etc.). For LLM/agentic projects, use `adm document` to get a review and improvement plan.
+## Scaffolding (`adm init` / `adm run`)
 
 ### Why?
 
@@ -219,6 +224,35 @@ my_project/
 
 Your training script doesn't need `import mlflow` or any modifications. The wrapper handles everything.
 
+### LLMOps scaffolding (`--project-type llmops`)
+
+For LLM/RAG/agentic projects, `adm init --project-type llmops` generates:
+
+```
+my_agent/
+├── databricks.yml              # Bundle config: dev/staging/prod targets
+├── resources/
+│   ├── agent-job.yml           # AgentDev → AgentEval → AgentDeploy workflow
+│   └── agent-serve-job.yml     # Batch agent serving (optional)
+├── llmops/
+│   ├── config.py               # Project config (model name, catalog, eval dataset)
+│   ├── run_agent_dev.py        # Wraps YOUR agent with MLflow tracing + UC registration
+│   ├── scorers.py              # Evaluation scorers (rule-based + LLM judge stubs)
+│   ├── run_agent_eval.py       # Runs mlflow.genai.evaluate() with scorers
+│   ├── deploy.py               # UC alias promotion logic
+│   ├── run_agent_deploy.py     # Runs promotion (challenger → champion)
+│   └── run_agent_serve.py      # Loads champion agent, batch invocation
+└── [your agent code untouched]
+```
+
+**Agent script contract:** Your script must expose either an `agent` variable (any callable: `str → str`) or a `predict(model_input)` function. Any framework works — LangChain, LangGraph, custom code, etc.
+
+The LLMOps pipeline:
+
+1. **AgentDev** — wraps your agent with `mlflow.tracing.enable()`, logs a sample invocation trace, registers the agent in Unity Catalog as `challenger`
+2. **AgentEval** — runs `mlflow.genai.evaluate()` with your scorers (edit `llmops/scorers.py` to add LLM judges, safety checks, etc.)
+3. **AgentDeploy** — if evaluation passes, promotes the agent to `champion` in Unity Catalog
+
 ---
 
 ## All Commands
@@ -292,24 +326,45 @@ artifact = review_repository(
 
 Not all CLI commands work in notebook environments. `trigger` and `document` work (SDK and git-based). `init`, `run`, and `clean` require the `databricks` CLI which is not available in notebook runtimes.
 
-## Try it on a real (messy) project
+## Try it on real (messy) projects
+
+### Classic ML example
 
 The `examples/messy-ml-project/` directory is a deliberately sloppy ML project — scattered notebooks, dead code, pickle files:
 
 ```bash
 cd examples/messy-ml-project
 adm document                                    # generate an improvement report
-adm init                                        # add MLOps scaffolding
+adm init                                        # add MLOps scaffolding (classic_ml)
 adm run                                         # deploy + run, get experiment URL
+```
+
+### Agentic example
+
+The `examples/messy-agent-project/` directory is a messy Q&A agent — hardcoded responses, unused tools, no evaluation:
+
+```bash
+cd examples/messy-agent-project
+adm document                                    # generate an improvement report
+adm init                                        # add LLMOps scaffolding (llmops via adm.yml)
+adm run                                         # deploy + run agent pipeline
 ```
 
 ## Customization
 
+### Classic ML (`mlops/`)
 - **Validation thresholds** — edit `mlops/validation.py` (metric names, threshold values)
-- **Cluster config** — edit node type, workers, Spark version in resource YAMLs
-- **Schedule** — edit the `schedule` block in any resource YAML (cron expression)
 - **Model promotion logic** — edit `mlops/deploy.py`
 - **DQX rules** — edit `mlops/dqx_checks.py` (add/remove column-level checks)
+
+### LLMOps (`llmops/`)
+- **Evaluation scorers** — edit `llmops/scorers.py` (add LLM judges, safety checks, custom rule scorers)
+- **Evaluation dataset** — set `EVAL_DATASET_TABLE` in `llmops/config.py` to a UC table with `inputs` and `expected_response` columns
+- **Agent promotion logic** — edit `llmops/deploy.py`
+
+### Both
+- **Cluster config** — edit node type, workers, Spark version in resource YAMLs
+- **Schedule** — edit the `schedule` block in any resource YAML (cron expression)
 
 ## Development
 

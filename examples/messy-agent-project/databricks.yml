@@ -1,10 +1,10 @@
 bundle:
-  name: messy-ml-project
+  name: messy-agent-project
 
 variables:
   experiment_name:
     description: MLflow experiment path for model training.
-    default: /Shared/az-databricks-mlops/${bundle.target}-messy-ml-project-experiment
+    default: /Shared/az-databricks-mlops/${bundle.target}-messy-agent-project-experiment
 
   schema_name:
     description: Unity Catalog schema (database) where the model is registered.
@@ -12,21 +12,20 @@ variables:
 
   model_name:
     description: Registered model name in Unity Catalog.
-    default: messy_ml_project
+    default: messy_agent_project
 
   catalog_name:
     description: Unity Catalog catalog name (maps to environment).
 
 sync:
   include:
-    - "mlops/**"
+    - "llmops/**"
     - "**/*.py"
     - "**/*.ipynb"
     - "data/**"
 
 include:
-  - ./resources/training-job.yml
-  - ./resources/inference-job.yml
+  - ./resources/agent-job.yml
 
 targets:
   dev:
